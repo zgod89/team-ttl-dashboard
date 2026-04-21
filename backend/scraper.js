@@ -285,12 +285,13 @@ async function geocodeRaces(races) {
     const bestCity = cityFromName || cityFromLocation || null;
 
     // Build geocode query — use city+country if we have it, else full location
+    // Append "city" as a hint to help Nominatim prefer populated places over islands/regions
     const geocodeQuery = bestCity && race.country
       ? `${bestCity}, ${race.country}`
       : race.location;
 
     try {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(geocodeQuery)}&format=json&limit=1&addressdetails=1`;
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(geocodeQuery)}&format=json&limit=3&addressdetails=1`;
 
       const res = await fetch(url, {
         headers: {
@@ -304,20 +305,29 @@ async function geocodeRaces(races) {
       const data = await res.json();
 
       if (data.length > 0) {
-        const place = data[0];
+        // Pick the result that has the richest city-level address data
+        const ranked = data.sort((a, b) => {
+          const aHasCity = !!(a.address?.city || a.address?.town || a.address?.village);
+          const bHasCity = !!(b.address?.city || b.address?.town || b.address?.village);
+          return (bHasCity ? 1 : 0) - (aHasCity ? 1 : 0);
+        });
+        const place = ranked[0];
         const addr = place.address || {};
-        const placeType = place.type || place.class || '';
+        const placeType = place.type || '';
 
-        // Only accept results that are genuine populated places
-        const validTypes = ['city', 'town', 'village', 'municipality', 'borough', 'suburb', 'quarter'];
-        const isValidPlace = validTypes.includes(placeType) ||
-          addr.city || addr.town || addr.village || addr.municipality;
+        // Extract city from structured address — most reliable signal
+        const geocodedCity = addr.city || addr.town || addr.village ||
+          addr.municipality || addr.city_district || null;
 
-        const geocodedCity = addr.city || addr.town || addr.village || addr.municipality || null;
-        const confirmedCity = geocodedCity || (isValidPlace ? bestCity : null);
+        // Types that are definitively NOT cities — reject coords for these
+        const invalidTypes = ['bay', 'sea', 'ocean', 'river', 'lake', 'region',
+          'state', 'country', 'continent', 'county', 'district'];
+        const isInvalidType = invalidTypes.includes(placeType) && !geocodedCity;
 
-        if (!confirmedCity || !isValidPlace) {
-          console.log(`[Geocode] "${race.name}" resolved to type "${placeType}" — not a city, skipping coords`);
+        const confirmedCity = geocodedCity || (!isInvalidType ? bestCity : null);
+
+        if (!confirmedCity || isInvalidType) {
+          console.log(`[Geocode] "${race.name}" → type "${placeType}", no city found — skipping coords`);
           results.push({ ...race, city: null, latitude: null, longitude: null });
         } else {
           results.push({
