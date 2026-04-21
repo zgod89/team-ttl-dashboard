@@ -241,20 +241,56 @@ function parseDateStr(str) {
 // GEOCODER — OpenStreetMap Nominatim (free, no API key required)
 // Adds lat/lon and city to a race based on its location string
 // ---------------------------------------------------------------
+
+function extractCityFromName(raceName) {
+  // Strip "Ironman 70.3 " or "Ironman " prefix and take what's left
+  // e.g. "Ironman 70.3 Chattanooga" → "Chattanooga"
+  // e.g. "Ironman Hamburg" → "Hamburg"
+  // Only use this if the remainder is a single recognisable place name (no spaces = likely a city)
+  const stripped = raceName
+    .replace(/^ironman\s+70\.3\s+/i, '')
+    .replace(/^ironman\s+/i, '')
+    .trim();
+  // Accept as city if it's 1-3 words and doesn't look like a generic descriptor
+  if (stripped && stripped.split(' ').length <= 3 && !/championship|world|series/i.test(stripped)) {
+    return stripped;
+  }
+  return null;
+}
+
+function extractCityFromLocation(location) {
+  // "Hamburg, Germany" → "Hamburg"
+  // "State College, PA, United States" → "State College"
+  // "United States" (country only) → null
+  if (!location || location === 'TBD') return null;
+  const parts = location.split(',').map(p => p.trim());
+  // If only one part it's just a country — no city
+  if (parts.length < 2) return null;
+  return parts[0] || null;
+}
+
 async function geocodeRaces(races) {
   console.log(`[Geocode] Geocoding ${races.length} races...`);
   const results = [];
 
   for (const race of races) {
-    // Skip if already has coordinates
     if (race.latitude && race.longitude) {
       results.push(race);
       continue;
     }
 
+    // Derive best city guess before geocoding
+    const cityFromName = extractCityFromName(race.name);
+    const cityFromLocation = extractCityFromLocation(race.location);
+    const bestCity = cityFromName || cityFromLocation || null;
+
+    // Build geocode query — use city+country if we have it, else full location
+    const geocodeQuery = bestCity && race.country
+      ? `${bestCity}, ${race.country}`
+      : race.location;
+
     try {
-      const query = encodeURIComponent(race.location);
-      const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`;
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(geocodeQuery)}&format=json&limit=1&addressdetails=1`;
 
       const res = await fetch(url, {
         headers: {
@@ -263,25 +299,34 @@ async function geocodeRaces(races) {
         }
       });
 
-      if (!res.ok) {
-        results.push(race);
-        continue;
-      }
+      if (!res.ok) { results.push(race); continue; }
 
       const data = await res.json();
 
       if (data.length > 0) {
         const place = data[0];
-        results.push({
-          ...race,
-          latitude: parseFloat(place.lat),
-          longitude: parseFloat(place.lon),
-          city: place.address?.city || place.address?.town || place.address?.village || race.city || null,
-        });
-        console.log(`[Geocode] ${race.name} → ${place.lat}, ${place.lon}`);
+        const addr = place.address || {};
+
+        // Extract city from Nominatim address fields
+        const geocodedCity = addr.city || addr.town || addr.village || addr.municipality || null;
+        const confirmedCity = geocodedCity || bestCity || null;
+
+        if (!confirmedCity) {
+          // No city confidence — skip coordinates
+          console.log(`[Geocode] No city confidence for ${race.name} — skipping coords`);
+          results.push({ ...race, city: null, latitude: null, longitude: null });
+        } else {
+          results.push({
+            ...race,
+            city: confirmedCity,
+            latitude: parseFloat(place.lat),
+            longitude: parseFloat(place.lon),
+          });
+          console.log(`[Geocode] ${race.name} → ${confirmedCity} (${place.lat}, ${place.lon})`);
+        }
       } else {
-        console.log(`[Geocode] No result for: ${race.location}`);
-        results.push(race);
+        console.log(`[Geocode] No result for: ${geocodeQuery} — skipping coords`);
+        results.push({ ...race, city: bestCity, latitude: null, longitude: null });
       }
 
       // Nominatim rate limit: max 1 request/second
@@ -293,7 +338,7 @@ async function geocodeRaces(races) {
     }
   }
 
-  console.log(`[Geocode] Done — geocoded ${results.filter(r => r.latitude).length}/${races.length} races`);
+  console.log(`[Geocode] Done — ${results.filter(r => r.latitude).length}/${races.length} races geocoded`);
   return results;
 }
 
