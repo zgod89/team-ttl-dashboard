@@ -25,79 +25,120 @@ const NOTIFICATIONS_ENABLED = false;
 // const WA_CHANNEL_ID = process.env.WHATSAPP_CHANNEL_ID;
 
 // ---------------------------------------------------------------
-// SCRAPER — Fetches races from Ironman.com
+// SCRAPER — Primary: ironman.com race listings page
 // ---------------------------------------------------------------
 async function scrapeIronmanRaces() {
-  console.log('[Scraper] Fetching IRONMAN races...');
+  console.log('[Scraper] Fetching from ironman.com/races...');
 
-  // IRONMAN provides a public JSON feed for their race calendar
-  const response = await fetch(
-    'https://www.ironman.com/api/races?year=2025&pageSize=200',
-    { headers: { 'User-Agent': 'TriTeam Dashboard Scraper/1.0' } }
-  );
+  const urls = [
+    'https://www.ironman.com/races',
+    'https://www.ironman.com/races?distance=full',
+    'https://www.ironman.com/races?distance=half',
+  ];
 
-  if (!response.ok) {
-    console.error('[Scraper] Failed to fetch IRONMAN API:', response.status);
-    return [];
-  }
-
-  const data = await response.json();
   const races = [];
 
-  for (const item of data.races || []) {
-    const type = item.eventType?.includes('70.3') ? '70.3' : 'IRONMAN';
-    races.push({
-      name: item.name,
-      type,
-      race_date: item.date?.split('T')[0],
-      location: `${item.city}, ${item.country}`,
-      city: item.city,
-      country: item.country,
-      latitude: item.lat ? parseFloat(item.lat) : null,
-      longitude: item.lng ? parseFloat(item.lng) : null,
-      external_id: `ironman_${item.id}`,
-      source: 'scraped',
-      registration_url: item.registrationUrl || null,
-    });
+  for (const url of urls) {
+    try {
+      console.log(`[Scraper] Fetching ${url}`);
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; TriTeamBot/1.0)',
+          'Accept': 'text/html,application/xhtml+xml',
+        }
+      });
+
+      console.log(`[Scraper] Status: ${response.status}`);
+      if (!response.ok) continue;
+
+      const html = await response.text();
+      console.log(`[Scraper] HTML length: ${html.length} chars`);
+
+      const $ = cheerio.load(html);
+
+      // Try multiple selector patterns ironman.com has used
+      const selectors = [
+        '.race-card', '.event-card', '.race-listing',
+        '[class*="race"]', '[class*="event"]', 'article',
+      ];
+
+      for (const sel of selectors) {
+        const found = $(sel).length;
+        if (found > 0) console.log(`[Scraper] Selector "${sel}" matched ${found} elements`);
+      }
+
+      // Parse race cards — try several known HTML patterns
+      $('[class*="race-card"], [class*="event-card"], .race-listing-item').each((i, el) => {
+        const name = $(el).find('[class*="title"], [class*="name"], h2, h3').first().text().trim();
+        const dateStr = $(el).find('[class*="date"], time').first().text().trim();
+        const location = $(el).find('[class*="location"], [class*="place"]').first().text().trim();
+        const href = $(el).find('a').first().attr('href') || '';
+
+        if (name && (name.toUpperCase().includes('IRONMAN') || name.includes('70.3'))) {
+          const type = name.includes('70.3') ? '70.3' : 'IRONMAN';
+          const race_date = parseDateStr(dateStr);
+          if (race_date) {
+            races.push({
+              name,
+              type,
+              race_date,
+              location: location || 'TBD',
+              source: 'scraped',
+              external_id: `ironman_${name.replace(/\s+/g, '_').toLowerCase()}_${race_date}`,
+              registration_url: href.startsWith('http') ? href : href ? `https://www.ironman.com${href}` : null,
+            });
+            console.log(`[Scraper] Found race: ${name} on ${race_date}`);
+          }
+        }
+      });
+
+    } catch (err) {
+      console.error(`[Scraper] Error fetching ${url}:`, err.message);
+    }
   }
 
-  console.log(`[Scraper] Found ${races.length} races`);
+  console.log(`[Scraper] Total from ironman.com: ${races.length}`);
   return races;
 }
 
-// Fallback: scrape triathlon.org if IRONMAN API is unavailable
-async function scrapeTriathlonOrg() {
-  console.log('[Scraper] Falling back to triathlon.org...');
-  const response = await fetch('https://www.triathlon.org/events', {
-    headers: { 'User-Agent': 'TriTeam Dashboard Scraper/1.0' }
-  });
-  const html = await response.text();
-  const $ = cheerio.load(html);
-  const races = [];
-
-  $('.event-item').each((i, el) => {
-    const name = $(el).find('.event-name').text().trim();
-    const dateStr = $(el).find('.event-date').text().trim();
-    const location = $(el).find('.event-location').text().trim();
-    if (name && dateStr) {
-      const isFullIronman = name.toUpperCase().includes('IRONMAN') && !name.includes('70.3');
-      races.push({
-        name,
-        type: name.includes('70.3') ? '70.3' : isFullIronman ? 'IRONMAN' : 'Other',
-        race_date: parseDateStr(dateStr),
-        location,
-        source: 'scraped',
-        external_id: `triorg_${i}_${name.replace(/\s+/g, '_').toLowerCase()}`,
-      });
-    }
-  });
-
-  return races.filter(r => r.type !== 'Other');
+// ---------------------------------------------------------------
+// SCRAPER — Fallback: hardcoded 2025/2026 race list
+// Used when the website scrape returns 0 results (e.g. bot blocking)
+// Update this list manually each season if needed.
+// ---------------------------------------------------------------
+function getHardcodedRaces() {
+  console.log('[Scraper] Using hardcoded race list as fallback...');
+  return [
+    { name: 'IRONMAN 70.3 Oceanside', type: '70.3', race_date: '2025-04-05', location: 'Oceanside, CA, USA' },
+    { name: 'IRONMAN Texas', type: 'IRONMAN', race_date: '2025-04-26', location: 'The Woodlands, TX, USA' },
+    { name: 'IRONMAN 70.3 St. George', type: '70.3', race_date: '2025-05-03', location: 'St. George, UT, USA' },
+    { name: 'IRONMAN 70.3 Chattanooga', type: '70.3', race_date: '2025-05-18', location: 'Chattanooga, TN, USA' },
+    { name: 'IRONMAN 70.3 Raleigh', type: '70.3', race_date: '2025-06-01', location: 'Raleigh, NC, USA' },
+    { name: 'IRONMAN Boulder', type: 'IRONMAN', race_date: '2025-06-08', location: 'Boulder, CO, USA' },
+    { name: 'IRONMAN 70.3 Eagleman', type: '70.3', race_date: '2025-06-08', location: 'Cambridge, MD, USA' },
+    { name: 'IRONMAN Coeur d\'Alene', type: 'IRONMAN', race_date: '2025-06-29', location: 'Coeur d\'Alene, ID, USA' },
+    { name: 'IRONMAN Lake Placid', type: 'IRONMAN', race_date: '2025-07-20', location: 'Lake Placid, NY, USA' },
+    { name: 'IRONMAN 70.3 Maine', type: '70.3', race_date: '2025-07-27', location: 'Kennebunkport, ME, USA' },
+    { name: 'IRONMAN Mont-Tremblant', type: 'IRONMAN', race_date: '2025-08-24', location: 'Mont-Tremblant, QC, Canada' },
+    { name: 'IRONMAN 70.3 Mont-Tremblant', type: '70.3', race_date: '2025-08-23', location: 'Mont-Tremblant, QC, Canada' },
+    { name: 'IRONMAN Wisconsin', type: 'IRONMAN', race_date: '2025-09-07', location: 'Madison, WI, USA' },
+    { name: 'IRONMAN 70.3 Augusta', type: '70.3', race_date: '2025-09-28', location: 'Augusta, GA, USA' },
+    { name: 'IRONMAN World Championship', type: 'IRONMAN', race_date: '2025-10-11', location: 'Kailua-Kona, HI, USA' },
+    { name: 'IRONMAN 70.3 World Championship', type: '70.3', race_date: '2025-10-25', location: 'Nice, France' },
+    { name: 'IRONMAN Florida', type: 'IRONMAN', race_date: '2025-11-01', location: 'Panama City Beach, FL, USA' },
+    { name: 'IRONMAN 70.3 Indian Wells', type: '70.3', race_date: '2025-12-07', location: 'Indian Wells, CA, USA' },
+  ].map(r => ({
+    ...r,
+    source: 'hardcoded',
+    external_id: `hardcoded_${r.name.replace(/\s+/g, '_').toLowerCase()}_${r.race_date}`,
+  }));
 }
 
 function parseDateStr(str) {
+  if (!str) return null;
+  // Handle formats like "April 5, 2025", "05 Apr 2025", "2025-04-05"
   const d = new Date(str);
-  return isNaN(d) ? null : d.toISOString().split('T')[0];
+  return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
 }
 
 // ---------------------------------------------------------------
@@ -228,9 +269,9 @@ async function main() {
   console.log('=== TriTeam Scraper/Notifier ===', new Date().toISOString());
 
   try {
-    // 1. Scrape races
+    // 1. Scrape races — fall back to hardcoded list if scrape returns nothing
     let races = await scrapeIronmanRaces();
-    if (races.length === 0) races = await scrapeTriathlonOrg();
+    if (races.length === 0) races = getHardcodedRaces();
     await upsertRaces(races);
 
     // 2. Check for weekend notifications (currently disabled — see NOTIFICATIONS_ENABLED flag)
