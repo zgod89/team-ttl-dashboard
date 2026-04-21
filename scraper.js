@@ -9,7 +9,6 @@
 
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
-import * as cheerio from 'cheerio';
 
 // --- Config ---
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -127,47 +126,56 @@ async function fetchTriathlonEvents() {
 }
 
 // ---------------------------------------------------------------
-// IRONMAN.COM SCRAPER — extracts race links from server-rendered HTML
-// The page renders race cards statically with href links like:
-// /races/im703-los-cabos or /races/im-texas
-// We extract all links, fetch each race page for date/location details
+// IRONMAN.COM SCRAPER — Puppeteer headless browser
+// Uses real Chrome to render JavaScript, then extracts race links
+// and visits each race page for date/location details
 // ---------------------------------------------------------------
 async function scrapeIronmanRaces() {
-  console.log('[Ironman] Scraping ironman.com/races for race links...');
+  console.log('[Ironman] Launching headless browser...');
 
-  const response = await fetch('https://www.ironman.com/races', {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TriTeamBot/1.0)', 'Accept': 'text/html' }
+  const { default: puppeteer } = await import('puppeteer');
+
+  const browser = await puppeteer.launch({
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
   });
-
-  if (!response.ok) {
-    console.error('[Ironman] Failed to fetch page:', response.status);
-    return [];
-  }
-
-  const html = await response.text();
-  const $ = cheerio.load(html);
-
-  // Extract all race detail links from anchor tags
-  const raceLinks = new Set();
-  $('a[href]').each((_, el) => {
-    const href = $(el).attr('href') || '';
-    // Match /races/im-xxxx and /races/im703-xxxx patterns
-    if (href.match(/^\/races\/im/i)) {
-      raceLinks.add(`https://www.ironman.com${href}`);
-    }
-  });
-
-  console.log(`[Ironman] Found ${raceLinks.size} race links`);
 
   const races = [];
 
-  for (const raceUrl of raceLinks) {
-    try {
-      const slug = raceUrl.split('/races/')[1];
+  try {
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36');
+    await page.setViewport({ width: 1280, height: 800 });
+
+    console.log('[Ironman] Navigating to ironman.com/races...');
+    await page.goto('https://www.ironman.com/races', {
+      waitUntil: 'networkidle2',
+      timeout: 30000,
+    });
+
+    // Wait for race cards to render
+    await page.waitForSelector('a[href*="/races/im"]', { timeout: 15000 }).catch(() => {
+      console.log('[Ironman] Race link selector timed out — page may have changed');
+    });
+
+    // Extract all /races/im* links
+    const raceLinks = await page.evaluate(() => {
+      const links = new Set();
+      document.querySelectorAll('a[href]').forEach(a => {
+        const href = a.getAttribute('href') || '';
+        if (href.match(/^\/races\/im/i)) links.add(href);
+      });
+      return [...links];
+    });
+
+    console.log(`[Ironman] Found ${raceLinks.length} race links`);
+
+    for (const href of raceLinks) {
+      const raceUrl = `https://www.ironman.com${href}`;
+      const slug = href.split('/races/')[1];
       const is703 = slug.startsWith('im703') || slug.startsWith('im-703');
       const type = is703 ? '70.3' : 'IRONMAN';
 
-      // Convert slug to a readable name e.g. im703-los-cabos → IRONMAN 70.3 Los Cabos
       const namePart = slug
         .replace(/^im703-?/i, '')
         .replace(/^im-?/i, '')
@@ -176,59 +184,69 @@ async function scrapeIronmanRaces() {
         .join(' ');
       const name = type === '70.3' ? `IRONMAN 70.3 ${namePart}` : `IRONMAN ${namePart}`;
 
-      // Fetch individual race page for date and location
-      const raceRes = await fetch(raceUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TriTeamBot/1.0)', 'Accept': 'text/html' }
-      });
+      try {
+        await page.goto(raceUrl, { waitUntil: 'networkidle2', timeout: 20000 });
 
-      if (!raceRes.ok) continue;
+        const details = await page.evaluate(() => {
+          // Try structured data first (most reliable)
+          const jsonLd = document.querySelector('script[type="application/ld+json"]');
+          if (jsonLd) {
+            try {
+              const data = JSON.parse(jsonLd.textContent);
+              if (data.startDate || data.location) {
+                return {
+                  date: data.startDate || null,
+                  location: data.location?.name || data.location?.address?.addressLocality || null,
+                };
+              }
+            } catch {}
+          }
 
-      const raceHtml = await raceRes.text();
-      const $r = cheerio.load(raceHtml);
+          // Fallback: meta tags
+          const metaDate = document.querySelector('meta[property="event:start_time"]')?.content
+            || document.querySelector('meta[name="event-date"]')?.content
+            || document.querySelector('time')?.getAttribute('datetime');
 
-      // Extract date — look for common date patterns in meta tags and page content
-      let race_date = null;
-      const metaDate = $r('meta[property="event:start_time"]').attr('content')
-        || $r('meta[name="event-date"]').attr('content')
-        || $r('time').first().attr('datetime');
+          const metaLocation = document.querySelector('meta[property="event:location"]')?.content
+            || document.querySelector('[class*="location"]')?.textContent?.trim();
 
-      if (metaDate) {
-        race_date = metaDate.split('T')[0];
-      } else {
-        // Fallback: scan text for date patterns like "April 5, 2026"
-        const bodyText = $r('body').text();
-        const dateMatch = bodyText.match(/([A-Z][a-z]+ \d{1,2},?\s+202[5-9])/);
-        if (dateMatch) race_date = parseDateStr(dateMatch[1]);
+          // Fallback: scan body text for date pattern
+          let textDate = null;
+          if (!metaDate) {
+            const match = document.body.innerText.match(/([A-Z][a-z]+ \d{1,2},?\s+202[5-9])/);
+            if (match) textDate = match[1];
+          }
+
+          return { date: metaDate || textDate, location: metaLocation };
+        });
+
+        const race_date = parseDateStr(details.date);
+        if (!race_date) {
+          console.log(`[Ironman] No date for ${name} — skipping`);
+          continue;
+        }
+
+        const location = details.location || namePart;
+        races.push({
+          name,
+          type,
+          race_date,
+          location,
+          external_id: `ironman_${slug}`,
+          source: 'ironman_scrape',
+          registration_url: raceUrl,
+        });
+
+        console.log(`[Ironman] ${name} | ${race_date} | ${location}`);
+        await new Promise(r => setTimeout(r, 500));
+
+      } catch (err) {
+        console.error(`[Ironman] Error on ${raceUrl}:`, err.message);
       }
-
-      // Extract location from meta or structured data
-      const location = $r('meta[property="event:location"]').attr('content')
-        || $r('[class*="location"]').first().text().trim()
-        || namePart;
-
-      if (!race_date) {
-        console.log(`[Ironman] No date found for ${name} — skipping`);
-        continue;
-      }
-
-      races.push({
-        name,
-        type,
-        race_date,
-        location,
-        external_id: `ironman_${slug}`,
-        source: 'ironman_scrape',
-        registration_url: raceUrl,
-      });
-
-      console.log(`[Ironman] Found: ${name} | ${race_date} | ${location}`);
-
-      // Polite delay to avoid hammering the server
-      await new Promise(r => setTimeout(r, 300));
-
-    } catch (err) {
-      console.error(`[Ironman] Error processing ${raceUrl}:`, err.message);
     }
+
+  } finally {
+    await browser.close();
   }
 
   console.log(`[Ironman] Scraped ${races.length} IRONMAN races`);
