@@ -181,10 +181,10 @@ async function scrapeIronmanRaces() {
       const race_date = parseDateStr(dateMatch[1]);
       if (!race_date) return;
 
-      // Extract Country and Location
-      const countryMatch = blockText.match(/Country:\s*([^\n\r]+)/);
-      const locationMatch = blockText.match(/Location:\s*([^\n\r]+)/);
-      const distanceMatch = blockText.match(/Distance:\s*([^\n\r]+)/);
+      // Extract Country and Location — stop before next field label
+      const countryMatch = blockText.match(/Country:\s*([^:\n\r]+?)(?=\s*(?:Location:|Division:|Distance:|$))/);
+      const locationMatch = blockText.match(/Location:\s*([^:\n\r]+?)(?=\s*(?:Country:|Division:|Distance:|$))/);
+      const distanceMatch = blockText.match(/Distance:\s*([^:\n\r]+?)(?=\s*(?:Country:|Location:|Division:|$))/);
 
       const country = countryMatch ? countryMatch[1].trim() : '';
       const locationCity = locationMatch ? locationMatch[1].trim() : '';
