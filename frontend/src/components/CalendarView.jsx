@@ -40,7 +40,7 @@ const S = {
   },
   legendItem: {
     display: 'flex', alignItems: 'center', gap: '6px',
-    fontSize: '12px', color: '#666',
+    fontSize: '12px', color: '#888',
   },
   legendDot: {
     width: '10px', height: '10px', borderRadius: '2px',

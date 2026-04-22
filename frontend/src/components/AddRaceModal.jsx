@@ -23,7 +23,7 @@ const S = {
     display: 'block',
     fontFamily: 'Barlow Condensed, sans-serif',
     fontSize: '11px', letterSpacing: '1.5px', textTransform: 'uppercase',
-    color: '#555', marginBottom: '6px',
+    color: '#999', marginBottom: '6px',
   },
   actions: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '1.5rem' },
   btnCancel: {
@@ -31,7 +31,7 @@ const S = {
     fontSize: '13px', letterSpacing: '1px', textTransform: 'uppercase',
     padding: '10px 20px', background: 'none',
     border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: '5px', color: '#666', cursor: 'pointer',
+    borderRadius: '5px', color: '#888', cursor: 'pointer',
   },
   btnSubmit: {
     fontFamily: 'Barlow Condensed, sans-serif',

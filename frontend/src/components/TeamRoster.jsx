@@ -24,7 +24,7 @@ const S = {
     fontFamily: 'Barlow Condensed, sans-serif',
     fontSize: '16px', fontWeight: 600, color: '#fff',
   },
-  raceCount: { fontSize: '12px', color: '#555', marginTop: '4px' },
+  raceCount: { fontSize: '12px', color: '#999', marginTop: '4px' },
   tags: {
     display: 'flex', flexWrap: 'wrap', gap: '4px',
     justifyContent: 'center', marginTop: '10px',
@@ -43,7 +43,7 @@ const S = {
     fontSize: '10px', letterSpacing: '1px', textTransform: 'uppercase',
     padding: '2px 8px', borderRadius: '3px',
     background: 'rgba(255,255,255,0.05)',
-    color: '#555', marginTop: '6px',
+    color: '#999', marginTop: '6px',
   },
   empty: {
     textAlign: 'center', padding: '3rem',

@@ -15,7 +15,7 @@ const S = {
   dateMonth: {
     fontFamily: 'Barlow Condensed, sans-serif',
     fontSize: '11px', letterSpacing: '1px',
-    textTransform: 'uppercase', color: '#555',
+    textTransform: 'uppercase', color: '#999',
   },
   dateDay: {
     fontFamily: 'Barlow Condensed, sans-serif',
@@ -25,7 +25,7 @@ const S = {
     fontFamily: 'Barlow Condensed, sans-serif',
     fontSize: '17px', fontWeight: 600, color: '#fff', marginBottom: '2px',
   },
-  raceLoc: { fontSize: '12px', color: '#555' },
+  raceLoc: { fontSize: '12px', color: '#999' },
   badge: {
     fontFamily: 'Barlow Condensed, sans-serif',
     fontSize: '11px', fontWeight: 700, letterSpacing: '1px',

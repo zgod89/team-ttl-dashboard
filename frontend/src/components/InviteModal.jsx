@@ -18,13 +18,13 @@ const S = {
     fontSize: '22px', fontWeight: 700, letterSpacing: '2px',
     textTransform: 'uppercase', color: '#FF3D8B', marginBottom: '4px',
   },
-  sub: { fontSize: '13px', color: '#555', marginBottom: '1.5rem' },
+  sub: { fontSize: '13px', color: '#999', marginBottom: '1.5rem' },
   group: { marginBottom: '12px' },
   label: {
     display: 'block',
     fontFamily: 'Barlow Condensed, sans-serif',
     fontSize: '11px', letterSpacing: '1.5px', textTransform: 'uppercase',
-    color: '#555', marginBottom: '6px',
+    color: '#999', marginBottom: '6px',
   },
   actions: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '1.5rem' },
   btnCancel: {
@@ -32,7 +32,7 @@ const S = {
     fontSize: '13px', letterSpacing: '1px', textTransform: 'uppercase',
     padding: '10px 20px', background: 'none',
     border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: '5px', color: '#666', cursor: 'pointer',
+    borderRadius: '5px', color: '#888', cursor: 'pointer',
   },
   btnSubmit: {
     fontFamily: 'Barlow Condensed, sans-serif',
