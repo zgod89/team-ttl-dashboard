@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 const MEMBER_COLORS = ['#00C4B4','#FF3D8B','#E8B84B','#FF5A1F','#a78bfa','#34d399','#f472b6','#60a5fa']
-
-const QUICK_EMOJIS = ['👍','💪','🔥','🤘','🏁','❤️','🎉','😮']
 
 const ICONS = {
   swim: {
@@ -31,9 +30,7 @@ function CourseIcon({ category, value, distance }) {
   const labels = { swim: 'Swim', bike: 'Bike', run: 'Run' }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1 }}>
-      <div style={{ width: '52px', height: '52px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00C4B4', background: 'rgba(0,196,180,0.06)' }}>
-        {icon}
-      </div>
+      <div style={{ width: '52px', height: '52px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00C4B4', background: 'rgba(0,196,180,0.06)' }}>{icon}</div>
       <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '10px', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#999' }}>{labels[category]}</div>
       <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '14px', fontWeight: 600, color: '#fff', textAlign: 'center' }}>{value || '—'}</div>
       {distance && <div style={{ fontSize: '11px', color: '#999' }}>{distance}</div>}
@@ -50,14 +47,6 @@ function getBadgeStyle(type) {
 function formatDate(dateStr) {
   const d = new Date(dateStr + 'T12:00:00')
   return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-}
-
-function timeAgo(dateStr) {
-  const diff = (Date.now() - new Date(dateStr)) / 1000
-  if (diff < 60) return 'just now'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return `${Math.floor(diff / 86400)}d ago`
 }
 
 const S = {
@@ -79,54 +68,24 @@ const S = {
   athleteName: { fontSize: '14px', color: '#fff', fontWeight: 500 },
   descText: { fontSize: '14px', color: '#bbb', lineHeight: 1.7 },
   regBtn: { display: 'block', width: '100%', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '15px', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', padding: '14px', background: '#00C4B4', border: 'none', borderRadius: '8px', color: '#000', cursor: 'pointer', textAlign: 'center', textDecoration: 'none' },
+  discussBtn: { display: 'block', width: '100%', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '14px', fontWeight: 600, letterSpacing: '1.5px', textTransform: 'uppercase', padding: '12px', background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#ccc', cursor: 'pointer', marginTop: '10px', textAlign: 'center' },
   enterBtn: { display: 'block', width: '100%', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '14px', fontWeight: 600, letterSpacing: '1.5px', textTransform: 'uppercase', padding: '12px', background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', color: '#ccc', cursor: 'pointer', marginTop: '10px' },
   enterBtnJoined: { borderColor: '#00C4B4', color: '#00C4B4' },
   loading: { fontSize: '13px', color: '#555', padding: '4px 0' },
   emptyText: { fontSize: '13px', color: '#555', fontStyle: 'italic' },
-  // Comments
-  commentList: { display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '12px' },
-  commentRow: { display: 'flex', gap: '8px', alignItems: 'flex-start' },
-  commentBubble: { background: '#1a1a1a', borderRadius: '0 8px 8px 8px', padding: '8px 12px', flex: 1 },
-  commentName: { fontFamily: 'Barlow Condensed, sans-serif', fontSize: '12px', fontWeight: 600, color: '#fff', marginBottom: '2px' },
-  commentText: { fontSize: '13px', color: '#bbb', lineHeight: 1.5 },
-  commentTime: { fontSize: '11px', color: '#555', marginTop: '4px' },
-  commentDelete: { background: 'none', border: 'none', color: '#555', fontSize: '11px', cursor: 'pointer', padding: '0', marginTop: '4px' },
-  // Reactions
-  reactionsRow: { display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' },
-  reactionPill: { display: 'flex', alignItems: 'center', gap: '4px', background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', padding: '4px 10px', fontSize: '14px', cursor: 'pointer', transition: 'all 0.15s' },
-  reactionPillActive: { background: 'rgba(0,196,180,0.1)', borderColor: 'rgba(0,196,180,0.4)' },
-  reactionCount: { fontSize: '12px', color: '#bbb', fontFamily: 'Barlow Condensed, sans-serif' },
-  // Quick emojis
-  quickEmojis: { display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' },
-  quickEmoji: { background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '4px 8px', fontSize: '18px', cursor: 'pointer', transition: 'transform 0.1s' },
-  // Comment input
-  commentInputWrap: { display: 'flex', gap: '8px', alignItems: 'flex-end' },
-  commentInput: { flex: 1, background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', color: '#fff', padding: '10px 12px', fontSize: '14px', fontFamily: 'Barlow, sans-serif', outline: 'none', resize: 'none', lineHeight: 1.5, minHeight: '40px', maxHeight: '100px' },
-  commentSendBtn: { fontFamily: 'Barlow Condensed, sans-serif', fontSize: '12px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', padding: '10px 14px', background: '#00C4B4', border: 'none', borderRadius: '8px', color: '#000', cursor: 'pointer', flexShrink: 0 },
-  emojiPickerWrap: { position: 'relative' },
-  emojiBtn: { background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', padding: '6px', borderRadius: '6px', lineHeight: 1 },
-  emojiPicker: { position: 'absolute', bottom: '40px', right: 0, background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', padding: '10px', display: 'flex', flexWrap: 'wrap', gap: '6px', width: '200px', zIndex: 10, boxShadow: '0 -4px 20px rgba(0,0,0,0.4)' },
-  emojiOption: { fontSize: '20px', cursor: 'pointer', padding: '4px', borderRadius: '4px', transition: 'background 0.1s', background: 'none', border: 'none' },
 }
 
 export default function RaceDetail({ race, session, onClose, onToggleEntry, isEntered }) {
   const [entries, setEntries] = useState([])
   const [raceDetails, setRaceDetails] = useState(null)
-  const [comments, setComments] = useState([])
-  const [reactions, setReactions] = useState([])
-  const [commentText, setCommentText] = useState('')
   const [loadingEntries, setLoadingEntries] = useState(true)
   const [loadingDetails, setLoadingDetails] = useState(true)
-  const [loadingComments, setLoadingComments] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
-  const textareaRef = useRef()
-  const userId = session.user.id
+  const [openingThread, setOpeningThread] = useState(false)
+  const navigate = useNavigate()
 
   useEffect(() => {
     loadEntries()
     loadRaceDetails()
-    loadComments()
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = '' }
   }, [race.id])
@@ -147,55 +106,20 @@ export default function RaceDetail({ race, session, onClose, onToggleEntry, isEn
     setLoadingDetails(false)
   }
 
-  async function loadComments() {
-    const [commentsRes, reactionsRes] = await Promise.all([
-      supabase.from('race_comments').select('*, profiles(full_name, avatar_color)').eq('race_id', race.id).order('created_at'),
-      supabase.from('race_reactions').select('*').eq('race_id', race.id),
-    ])
-    if (commentsRes.data) setComments(commentsRes.data)
-    if (reactionsRes.data) setReactions(reactionsRes.data)
-    setLoadingComments(false)
-  }
-
-  async function submitComment() {
-    const text = commentText.trim()
-    if (!text || submitting) return
-    setSubmitting(true)
-    const { data, error } = await supabase.from('race_comments')
-      .insert({ race_id: race.id, athlete_id: userId, content: text })
-      .select('*, profiles(full_name, avatar_color)').single()
-    if (!error && data) {
-      setComments(prev => [...prev, data])
-      setCommentText('')
+  async function discussRace() {
+    setOpeningThread(true)
+    let { data: channel } = await supabase.from('channels').select('id').eq('race_id', race.id).single()
+    if (!channel) {
+      const slug = race.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+      const { data: newChannel, error } = await supabase.from('channels')
+        .insert({ name: slug, type: 'race', race_id: race.id, description: `Race thread for ${race.name}`, created_by: session.user.id })
+        .select('id').single()
+      if (error) { console.error('[discussRace]', error.message); setOpeningThread(false); return }
+      channel = newChannel
     }
-    setSubmitting(false)
+    onClose()
+    navigate(`/messages?channel=${channel.id}`)
   }
-
-  async function deleteComment(commentId) {
-    await supabase.from('race_comments').delete().eq('id', commentId)
-    setComments(prev => prev.filter(c => c.id !== commentId))
-  }
-
-  async function toggleReaction(emoji) {
-    setShowEmojiPicker(false)
-    const existing = reactions.find(r => r.athlete_id === userId && r.emoji === emoji)
-    if (existing) {
-      await supabase.from('race_reactions').delete().eq('id', existing.id)
-      setReactions(prev => prev.filter(r => r.id !== existing.id))
-    } else {
-      const { data, error } = await supabase.from('race_reactions')
-        .insert({ race_id: race.id, athlete_id: userId, emoji })
-        .select().single()
-      if (!error && data) setReactions(prev => [...prev, data])
-    }
-  }
-
-  // Group reactions by emoji
-  const groupedReactions = reactions.reduce((acc, r) => {
-    if (!acc[r.emoji]) acc[r.emoji] = []
-    acc[r.emoji].push(r.athlete_id)
-    return acc
-  }, {})
 
   const hasCourseInfo = raceDetails?.swimType || raceDetails?.bikeProfile || raceDetails?.runProfile
 
@@ -266,104 +190,6 @@ export default function RaceDetail({ race, session, onClose, onToggleEntry, isEn
               }
             </div>
 
-            {/* Comments & Reactions */}
-            <div style={S.section}>
-              <div style={S.sectionTitle}>Comments & Reactions</div>
-
-              {/* Reaction pills */}
-              {Object.keys(groupedReactions).length > 0 && (
-                <div style={S.reactionsRow}>
-                  {Object.entries(groupedReactions).map(([emoji, userIds]) => {
-                    const isMine = userIds.includes(userId)
-                    return (
-                      <button
-                        key={emoji}
-                        style={{ ...S.reactionPill, ...(isMine ? S.reactionPillActive : {}) }}
-                        onClick={() => toggleReaction(emoji)}
-                        title={isMine ? 'Click to remove' : 'Click to react'}
-                      >
-                        <span style={{ fontSize: '16px' }}>{emoji}</span>
-                        <span style={S.reactionCount}>{userIds.length}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-
-              {/* Quick reaction row */}
-              <div style={S.quickEmojis}>
-                {QUICK_EMOJIS.map(emoji => (
-                  <button
-                    key={emoji}
-                    style={{ ...S.quickEmoji, ...(reactions.find(r => r.athlete_id === userId && r.emoji === emoji) ? { background: 'rgba(0,196,180,0.1)', borderColor: 'rgba(0,196,180,0.3)' } : {}) }}
-                    onClick={() => toggleReaction(emoji)}
-                    title={`React with ${emoji}`}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-
-              {/* Comment list */}
-              {loadingComments ? (
-                <div style={S.loading}>Loading comments...</div>
-              ) : comments.length === 0 ? (
-                <div style={{ ...S.emptyText, marginBottom: '12px' }}>No comments yet — start the conversation!</div>
-              ) : (
-                <div style={S.commentList}>
-                  {comments.map((comment, idx) => {
-                    const name = comment.profiles?.full_name || 'Athlete'
-                    const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
-                    const color = comment.profiles?.avatar_color || MEMBER_COLORS[idx % MEMBER_COLORS.length]
-                    const isMine = comment.athlete_id === userId
-                    return (
-                      <div key={comment.id} style={S.commentRow}>
-                        <div style={{ ...S.avatar, width: '28px', height: '28px', fontSize: '10px', background: color, flexShrink: 0 }}>{initials}</div>
-                        <div style={S.commentBubble}>
-                          <div style={S.commentName}>{name}</div>
-                          <div style={S.commentText}>{comment.content}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div style={S.commentTime}>{timeAgo(comment.created_at)}</div>
-                            {isMine && (
-                              <button style={S.commentDelete} onClick={() => deleteComment(comment.id)}>Delete</button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-
-              {/* Comment input */}
-              <div style={S.commentInputWrap}>
-                <textarea
-                  ref={textareaRef}
-                  style={S.commentInput}
-                  placeholder="Add a comment..."
-                  value={commentText}
-                  onChange={e => setCommentText(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment() } }}
-                  rows={1}
-                />
-                <div style={S.emojiPickerWrap}>
-                  <button style={S.emojiBtn} onClick={() => setShowEmojiPicker(p => !p)}>😊</button>
-                  {showEmojiPicker && (
-                    <div style={S.emojiPicker}>
-                      {['😀','😂','🥹','😍','🤩','😎','🥳','🤔','😮','💪','🔥','❤️','👍','🎉','🏆','🤘','🏁','🏊','🚴','🏃','⚡','💯','🙌','👏'].map(e => (
-                        <button key={e} style={S.emojiOption} onClick={() => setCommentText(prev => prev + e)}>
-                          {e}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <button style={S.commentSendBtn} onClick={submitComment} disabled={submitting || !commentText.trim()}>
-                  {submitting ? '...' : 'Post'}
-                </button>
-              </div>
-            </div>
-
             {/* Actions */}
             <div style={{ ...S.section, borderBottom: 'none' }}>
               {race.registration_url && race.registration_url !== 'https://www.ironman.com/races' && (
@@ -371,6 +197,9 @@ export default function RaceDetail({ race, session, onClose, onToggleEntry, isEn
                   View Race / Register →
                 </a>
               )}
+              <button style={S.discussBtn} onClick={discussRace} disabled={openingThread}>
+                💬 {openingThread ? 'Opening...' : 'Discuss This Race'}
+              </button>
               <button
                 style={{ ...S.enterBtn, ...(isEntered ? S.enterBtnJoined : {}) }}
                 onClick={async () => { await onToggleEntry(race.id); loadEntries() }}

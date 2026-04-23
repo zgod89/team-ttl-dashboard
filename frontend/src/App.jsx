@@ -5,42 +5,53 @@ import Login from './pages/Login'
 import Home from './pages/Home'
 import Dashboard from './pages/Dashboard'
 import MyRaces from './pages/MyRaces'
+import Messaging from './pages/Messaging'
 import ProfileSettings from './pages/ProfileSettings'
 import CompleteProfile from './pages/CompleteProfile'
 import Layout from './components/Layout'
 
 function AppRoutes({ session, profile, setProfile }) {
-  const navigate = useNavigate()
-  const [showProfile, setShowProfile] = useState(false)
+  const [showProfileSettings, setShowProfileSettings] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
 
-  const handleProfileComplete = async () => {
-    // Reload profile after completion
-    const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
-    if (data) setProfile(data)
-    setShowProfile(false)
+  useEffect(() => { loadUnreadCount() }, [])
+
+  async function loadUnreadCount() {
+    const userId = session.user.id
+    const { data: channels } = await supabase.from('channels').select('id')
+    const { data: reads } = await supabase.from('channel_reads').select('*').eq('athlete_id', userId)
+    if (!channels) return
+    const readsMap = {}
+    reads?.forEach(r => { readsMap[r.channel_id] = r.last_read_at })
+    let total = 0
+    for (const ch of channels) {
+      const lastRead = readsMap[ch.id]
+      const query = supabase.from('messages').select('*', { count: 'exact', head: true }).eq('channel_id', ch.id)
+      if (lastRead) query.gt('created_at', lastRead)
+      const { count } = await query
+      total += count || 0
+    }
+    setUnreadCount(total)
   }
 
-  if (showProfile) {
-    return (
-      <ProfileSettings
-        session={session}
-        onBack={() => {
-          // Reload profile on back
-          supabase.from('profiles').select('*').eq('id', session.user.id).single()
-            .then(({ data }) => { if (data) setProfile(data) })
-          setShowProfile(false)
-        }}
-      />
-    )
+  const handleProfileSave = async () => {
+    const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
+    if (data) setProfile(data)
+    setShowProfileSettings(false)
+  }
+
+  if (showProfileSettings) {
+    return <ProfileSettings session={session} onBack={handleProfileSave} />
   }
 
   return (
-    <Layout session={session} profile={profile} onNavigateProfile={() => setShowProfile(true)}>
+    <Layout session={session} profile={profile} onNavigateProfile={() => setShowProfileSettings(true)} unreadCount={unreadCount}>
       <Routes>
         <Route path="/login" element={<Navigate to="/" />} />
         <Route path="/" element={<Home session={session} />} />
         <Route path="/races" element={<Dashboard session={session} />} />
         <Route path="/my-races" element={<MyRaces session={session} />} />
+        <Route path="/messages" element={<Messaging session={session} profile={profile} />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Layout>
@@ -68,8 +79,7 @@ export default function App() {
   }, [])
 
   async function checkProfile(userId) {
-    const { data } = await supabase
-      .from('profiles').select('*').eq('id', userId).single()
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
     const nameIsReal = data?.full_name && !data.full_name.includes('@') && data.full_name.length > 2
     setHasProfile(!!(data && nameIsReal))
     if (data) setProfile(data)
@@ -85,14 +95,7 @@ export default function App() {
   if (!session) return <Login />
 
   if (!hasProfile) {
-    return (
-      <CompleteProfile
-        session={session}
-        onComplete={async () => {
-          await checkProfile(session.user.id)
-        }}
-      />
-    )
+    return <CompleteProfile session={session} onComplete={async () => { await checkProfile(session.user.id) }} />
   }
 
   return (
