@@ -252,7 +252,7 @@ export default function RaceDetail({ race, session, onClose, onToggleEntry, isEn
 
             {/* Actions */}
             <div style={{ ...S.section, borderBottom: 'none' }}>
-              {race.registration_url && (
+              {race.registration_url && race.registration_url !== 'https://www.ironman.com/races' && (
                 <a
                   href={race.registration_url}
                   target="_blank"

@@ -210,7 +210,7 @@ async function scrapeIronmanRaces() {
         country: country || null,
         external_id,
         source: 'pto_scrape',
-        registration_url: `https://www.ironman.com/races`,
+        registration_url: slug ? `https://www.ironman.com/races/${slug}` : `https://www.ironman.com/races`,
       });
 
       console.log(`[PTO] ${name} | ${race_date} | ${location}`);
