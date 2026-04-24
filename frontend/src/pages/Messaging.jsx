@@ -353,17 +353,19 @@ function MessageThread({ channel, session, profile, isMobile, onBack, onMarkRead
     setTimeout(() => bottomRef.current?.scrollIntoView(), 100)
   }
 
-  // Parse @mentions from text and extract profile ids
+  // Parse @mentions from text by checking against known profile names
   function extractMentions(content) {
+    if (!content || !profiles.length) return []
     const mentioned = []
-    const parts = content.split(/(@\w[\w\s]*)/)
-    parts.forEach(part => {
-      if (part.startsWith('@')) {
-        const name = part.slice(1).trim()
-        const p = profiles.find(pr => pr.full_name?.toLowerCase() === name.toLowerCase())
-        if (p) mentioned.push(p.id)
+    for (const p of profiles) {
+      if (!p.full_name) continue
+      // Check if @FullName appears anywhere in the content (case-insensitive)
+      const escaped = p.full_name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const regex = new RegExp(`@${escaped}`, 'i')
+      if (regex.test(content)) {
+        mentioned.push(p.id)
       }
-    })
+    }
     return mentioned
   }
 
@@ -393,13 +395,15 @@ function MessageThread({ channel, session, profile, isMobile, onBack, onMarkRead
       setMessages(prev => prev.map(m => m.id === optimisticId ? data : m))
       // Insert mentions
       const mentionedIds = extractMentions(content || '')
+      console.log('[Mentions] detected ids:', mentionedIds, 'in content:', content)
       if (mentionedIds.length > 0) {
-        await supabase.from('message_mentions').insert(
-          mentionedIds.filter(id => id !== userId).map(id => ({
-            message_id: data.id, mentioned_user_id: id, channel_id: channel.id,
-          }))
-        )
-        if (mentionedIds.includes(userId)) {} else onMention?.()
+        const mentionRows = mentionedIds.filter(id => id !== userId).map(id => ({
+          message_id: data.id, mentioned_user_id: id, channel_id: channel.id,
+        }))
+        const { error: mentionError } = await supabase.from('message_mentions').insert(mentionRows)
+        if (mentionError) console.error('[Mentions] insert error:', mentionError.message)
+        else console.log('[Mentions] inserted', mentionRows.length, 'mention(s)')
+        if (!mentionedIds.includes(userId)) onMention?.()
       }
     } else {
       setMessages(prev => prev.filter(m => m.id !== optimisticId))
