@@ -4,15 +4,15 @@ import { supabase } from './lib/supabase'
 import Login from './pages/Login'
 import Home from './pages/Home'
 import Dashboard from './pages/Dashboard'
-import MyRaces from './pages/MyRaces'
 import Messaging from './pages/Messaging'
-import ProfileSettings from './pages/ProfileSettings'
+import Discounts from './pages/Discounts'
+import ProfilePage from './pages/ProfilePage'
 import CompleteProfile from './pages/CompleteProfile'
 import Layout from './components/Layout'
 
 function AppRoutes({ session, profile, setProfile }) {
-  const [showProfileSettings, setShowProfileSettings] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const navigate = useNavigate()
 
   useEffect(() => { loadUnreadCount() }, [])
 
@@ -26,9 +26,9 @@ function AppRoutes({ session, profile, setProfile }) {
     let total = 0
     for (const ch of channels) {
       const lastRead = readsMap[ch.id]
-      const query = supabase.from('messages').select('*', { count: 'exact', head: true }).eq('channel_id', ch.id)
-      if (lastRead) query.gt('created_at', lastRead)
-      const { count } = await query
+      const q = supabase.from('messages').select('*', { count: 'exact', head: true }).eq('channel_id', ch.id)
+      if (lastRead) q.gt('created_at', lastRead)
+      const { count } = await q
       total += count || 0
     }
     setUnreadCount(total)
@@ -37,21 +37,22 @@ function AppRoutes({ session, profile, setProfile }) {
   const handleProfileSave = async () => {
     const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
     if (data) setProfile(data)
-    setShowProfileSettings(false)
-  }
-
-  if (showProfileSettings) {
-    return <ProfileSettings session={session} onBack={handleProfileSave} />
   }
 
   return (
-    <Layout session={session} profile={profile} onNavigateProfile={() => setShowProfileSettings(true)} unreadCount={unreadCount}>
+    <Layout
+      session={session}
+      profile={profile}
+      onNavigateProfile={() => navigate('/profile')}
+      unreadCount={unreadCount}
+    >
       <Routes>
         <Route path="/login" element={<Navigate to="/" />} />
         <Route path="/" element={<Home session={session} />} />
         <Route path="/races" element={<Dashboard session={session} />} />
-        <Route path="/my-races" element={<MyRaces session={session} />} />
         <Route path="/messages" element={<Messaging session={session} profile={profile} />} />
+        <Route path="/discounts" element={<Discounts profile={profile} />} />
+        <Route path="/profile" element={<ProfilePage session={session} profile={profile} onSave={handleProfileSave} />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Layout>
@@ -94,9 +95,7 @@ export default function App() {
 
   if (!session) return <Login />
 
-  if (!hasProfile) {
-    return <CompleteProfile session={session} onComplete={async () => { await checkProfile(session.user.id) }} />
-  }
+  if (!hasProfile) return <CompleteProfile session={session} onComplete={async () => { await checkProfile(session.user.id) }} />
 
   return (
     <BrowserRouter>
