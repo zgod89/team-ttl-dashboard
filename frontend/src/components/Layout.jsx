@@ -149,11 +149,6 @@ export default function Layout({ children, session, profile, onNavigateProfile, 
           ))}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* Discounts on desktop nav right */}
-          <button style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '13px', letterSpacing: '2px', textTransform: 'uppercase', padding: '0 12px', height: '56px', display: 'flex', alignItems: 'center', color: location.pathname === '/discounts' ? '#fff' : '#888', cursor: 'pointer', background: 'none', border: 'none', borderBottom: location.pathname === '/discounts' ? '2px solid #00C4B4' : '2px solid transparent' }}
-            onClick={() => navigate('/discounts')}>
-            Discounts
-          </button>
           {/* Avatar dropdown */}
           <div style={{ position: 'relative' }}>
             <div onClick={() => setDesktopDropdown(p => !p)} style={{ cursor: 'pointer' }}>
