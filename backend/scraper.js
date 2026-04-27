@@ -494,6 +494,55 @@ async function sendWhatsAppMessage(message, raceId) {
 }
 
 // ---------------------------------------------------------------
+// CLEANUP — delete race threads older than 14 days post-race
+// ---------------------------------------------------------------
+async function cleanupOldRaceChannels() {
+  console.log('[Cleanup] Checking for expired race channels...');
+
+  // Find race channels where the race was more than 14 days ago
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 14);
+  const cutoffDate = cutoff.toISOString().split('T')[0];
+
+  const { data: expiredChannels, error: fetchError } = await supabase
+    .from('channels')
+    .select('id, name, races(name, race_date)')
+    .eq('type', 'race')
+    .not('race_id', 'is', null);
+
+  if (fetchError) {
+    console.error('[Cleanup] Failed to fetch race channels:', fetchError.message);
+    return;
+  }
+
+  const toDelete = (expiredChannels || []).filter(ch => {
+    const raceDate = ch.races?.race_date;
+    return raceDate && raceDate < cutoffDate;
+  });
+
+  if (toDelete.length === 0) {
+    console.log('[Cleanup] No expired race channels found.');
+    return;
+  }
+
+  console.log(`[Cleanup] Found ${toDelete.length} expired race channel(s) to delete:`);
+  toDelete.forEach(ch => console.log(`  - #${ch.name} (race: ${ch.races?.race_date})`));
+
+  // Delete channels — messages/reactions/mentions cascade automatically
+  const ids = toDelete.map(ch => ch.id);
+  const { error: deleteError } = await supabase
+    .from('channels')
+    .delete()
+    .in('id', ids);
+
+  if (deleteError) {
+    console.error('[Cleanup] Failed to delete channels:', deleteError.message);
+  } else {
+    console.log(`[Cleanup] Successfully deleted ${toDelete.length} expired race channel(s).`);
+  }
+}
+
+// ---------------------------------------------------------------
 // MAIN
 // ---------------------------------------------------------------
 async function main() {
@@ -514,8 +563,11 @@ async function main() {
     console.log(`[Main] Total combined races: ${all.length}`);
     await upsertRaces(all);
 
-    // 2. Check for weekend notifications (currently disabled — see NOTIFICATIONS_ENABLED flag)
+    // 5. Check for weekend notifications (currently disabled — see NOTIFICATIONS_ENABLED flag)
     await checkAndNotify();
+
+    // 6. Clean up race chat threads older than 14 days post-race
+    await cleanupOldRaceChannels();
 
     console.log('=== Done ===');
   } catch (err) {

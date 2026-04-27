@@ -21,8 +21,12 @@ const MessageIcon = ({ active }) => (
     <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
   </svg>
 )
-const DiscountIcon = ({ active }) => (
+const TrainingIcon = ({ active }) => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5}>
+    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+  </svg>
+)
+const DiscountIcon = ({ active }) => (  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5}>
     <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
     <circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/>
   </svg>
@@ -39,6 +43,7 @@ const ProfileIcon = ({ active, avatarUrl, color, initials }) => {
 const TABS = [
   { path: '/', label: 'Home' },
   { path: '/races', label: 'Races' },
+  { path: '/training', label: 'Training' },
   { path: '/messages', label: 'Messages' },
   { path: '/discounts', label: 'Discounts' },
   { path: '/profile', label: 'Profile' },
@@ -47,6 +52,7 @@ const TABS = [
 const DESKTOP_NAV = [
   { path: '/', label: 'Home' },
   { path: '/races', label: 'Races' },
+  { path: '/training', label: 'Training' },
   { path: '/messages', label: 'Messages' },
   { path: '/discounts', label: 'Discounts' },
 ]
@@ -108,6 +114,7 @@ export default function Layout({ children, session, profile, onNavigateProfile, 
               >
                 {tab.path === '/' && <HomeIcon active={active} />}
                 {tab.path === '/races' && <RaceIcon active={active} />}
+                {tab.path === '/training' && <TrainingIcon active={active} />}
                 {tab.path === '/messages' && <MessageIcon active={active} />}
                 {tab.path === '/discounts' && <DiscountIcon active={active} />}
                 {isProfile && <ProfileIcon active={active} avatarUrl={avatarUrl} color={avatarColor} initials={initials} />}
