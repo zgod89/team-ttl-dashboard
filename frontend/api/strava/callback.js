@@ -1,24 +1,11 @@
-/**
- * Vercel Serverless Function — /api/strava/callback
- * Handles the OAuth callback from Strava after user authorises.
- * Exchanges the code for tokens and stores them on the user's profile.
- *
- * Flow:
- * 1. User clicks "Connect Strava" → redirected to Strava
- * 2. Strava redirects back to /api/strava/callback?code=xxx&state=userId
- * 3. This function exchanges code for tokens
- * 4. Tokens stored in profiles table
- * 5. User redirected back to /training
- */
-
-import { createClient } from '@supabase/supabase-js'
+const { createClient } = require('@supabase/supabase-js')
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY // service key — can write to any profile
+  process.env.SUPABASE_SERVICE_KEY
 )
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   const { code, state: userId, error } = req.query
 
   if (error) {
@@ -31,7 +18,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Exchange code for tokens
     const tokenRes = await fetch('https://www.strava.com/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -51,7 +37,6 @@ export default async function handler(req, res) {
 
     const tokenData = await tokenRes.json()
 
-    // Store tokens on profile
     const { error: dbError } = await supabase.from('profiles').update({
       strava_athlete_id: tokenData.athlete.id,
       strava_access_token: tokenData.access_token,
