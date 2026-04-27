@@ -1,12 +1,3 @@
-/**
- * Vercel Serverless Function — /api/strava/activities
- * Fetches recent activities for all team members who have connected Strava.
- * Handles token refresh automatically when tokens are expired.
- *
- * GET /api/strava/activities?userId=xxx
- * Returns: { activities: [...], profiles: [...] }
- */
-
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -16,16 +7,11 @@ const supabase = createClient(
 
 const STRAVA_API = 'https://www.strava.com/api/v3'
 
-// Refresh a Strava token if expired
 async function getValidToken(profile) {
   const now = Math.floor(Date.now() / 1000)
-
-  // Token still valid
   if (profile.strava_token_expires_at > now + 60) {
     return profile.strava_access_token
   }
-
-  // Refresh the token
   const res = await fetch('https://www.strava.com/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -36,32 +22,26 @@ async function getValidToken(profile) {
       grant_type: 'refresh_token',
     }),
   })
-
   if (!res.ok) {
     console.error(`[Strava] Token refresh failed for profile ${profile.id}`)
     return null
   }
-
   const data = await res.json()
-
-  // Update stored tokens
   await supabase.from('profiles').update({
     strava_access_token: data.access_token,
     strava_refresh_token: data.refresh_token,
     strava_token_expires_at: data.expires_at,
   }).eq('id', profile.id)
-
   return data.access_token
 }
 
-// Format activity type to swim/bike/run label
 function formatType(type) {
   const map = {
     'Swim': 'Swim', 'Ride': 'Bike', 'Run': 'Run',
     'VirtualRide': 'Bike', 'VirtualRun': 'Run',
     'TrailRun': 'Run', 'Walk': 'Walk', 'Hike': 'Hike',
     'WeightTraining': 'Strength', 'Workout': 'Workout',
-    'Yoga': 'Yoga', 'Rowing': 'Row', 'Kayaking': 'Kayak',
+    'Yoga': 'Yoga', 'Rowing': 'Row',
   }
   return map[type] || type
 }
@@ -87,11 +67,9 @@ function formatElevation(metres) {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
-
   if (req.method === 'OPTIONS') return res.status(200).end()
 
   try {
-    // Get all profiles with Strava connected
     const { data: profiles, error: profileError } = await supabase
       .from('profiles')
       .select('id, full_name, avatar_color, avatar_url, strava_athlete_id, strava_access_token, strava_refresh_token, strava_token_expires_at')
@@ -105,7 +83,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ activities: [], connectedCount: 0 })
     }
 
-    // Fetch activities for each connected athlete (last 14 days)
     const after = Math.floor((Date.now() - 14 * 24 * 60 * 60 * 1000) / 1000)
     const allActivities = []
 
@@ -119,12 +96,11 @@ export default async function handler(req, res) {
       )
 
       if (!actRes.ok) {
-        console.error(`[Strava] Failed to fetch activities for ${profile.full_name}: ${actRes.status}`)
+        console.error(`[Strava] Failed to fetch for ${profile.full_name}: ${actRes.status}`)
         return
       }
 
       const activities = await actRes.json()
-
       activities.forEach(act => {
         allActivities.push({
           id: act.id,
@@ -150,7 +126,6 @@ export default async function handler(req, res) {
       })
     }))
 
-    // Sort by most recent first
     allActivities.sort((a, b) => new Date(b.start_date) - new Date(a.start_date))
 
     return res.status(200).json({

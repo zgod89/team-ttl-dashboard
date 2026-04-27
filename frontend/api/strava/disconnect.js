@@ -1,11 +1,3 @@
-/**
- * Vercel Serverless Function — /api/strava/disconnect
- * Removes Strava tokens from a user's profile.
- *
- * POST /api/strava/disconnect
- * Body: { userId: string }
- */
-
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
