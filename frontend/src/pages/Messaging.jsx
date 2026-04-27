@@ -303,6 +303,8 @@ function MessageThread({ channel, session, profile, isMobile, onBack, onMarkRead
   const [mentionQuery, setMentionQuery] = useState(null)
   const [mentionIndex, setMentionIndex] = useState(0)
   const [hoveredMsg, setHoveredMsg] = useState(null)
+  const [editingMsg, setEditingMsg] = useState(null) // { id, content }
+  const [editText, setEditText] = useState('')
   const bottomRef = useRef()
   const fileRef = useRef()
   const textareaRef = useRef()
@@ -395,14 +397,12 @@ function MessageThread({ channel, session, profile, isMobile, onBack, onMarkRead
       setMessages(prev => prev.map(m => m.id === optimisticId ? data : m))
       // Insert mentions
       const mentionedIds = extractMentions(content || '')
-      console.log('[Mentions] detected ids:', mentionedIds, 'in content:', content)
       if (mentionedIds.length > 0) {
         const mentionRows = mentionedIds.filter(id => id !== userId).map(id => ({
           message_id: data.id, mentioned_user_id: id, channel_id: channel.id,
         }))
         const { error: mentionError } = await supabase.from('message_mentions').insert(mentionRows)
         if (mentionError) console.error('[Mentions] insert error:', mentionError.message)
-        else console.log('[Mentions] inserted', mentionRows.length, 'mention(s)')
         if (!mentionedIds.includes(userId)) onMention?.()
       }
     } else {
@@ -437,6 +437,19 @@ function MessageThread({ channel, session, profile, isMobile, onBack, onMarkRead
       const { data, error } = await supabase.from('message_reactions').insert({ message_id: messageId, athlete_id: userId, emoji }).select().single()
       if (!error && data) setReactions(prev => ({ ...prev, [messageId]: [...(prev[messageId] || []), data] }))
     }
+  }
+
+  async function saveEdit() {
+    const content = editText.trim()
+    if (!content || !editingMsg) return
+    const { error } = await supabase.from('messages')
+      .update({ content, edited_at: new Date().toISOString() })
+      .eq('id', editingMsg.id)
+    if (!error) {
+      setMessages(prev => prev.map(m => m.id === editingMsg.id ? { ...m, content, edited_at: new Date().toISOString() } : m))
+    }
+    setEditingMsg(null)
+    setEditText('')
   }
 
   // Handle @mention detection in textarea
@@ -536,9 +549,31 @@ function MessageThread({ channel, session, profile, isMobile, onBack, onMarkRead
               )}
 
               <div style={{ paddingLeft: msg.showHeader ? '0' : '42px' }}>
-                {msg.content && (
+                {msg.content && editingMsg?.id === msg.id ? (
+                  // Inline edit input
+                  <div style={{ marginTop: '4px' }}>
+                    <textarea
+                      autoFocus
+                      style={{ width: '100%', background: '#1a1a1a', border: '1px solid rgba(0,196,180,0.4)', borderRadius: '6px', color: '#fff', padding: '8px 10px', fontSize: '14px', fontFamily: 'Barlow, sans-serif', outline: 'none', resize: 'none', lineHeight: 1.5, minHeight: '40px', maxHeight: '120px', boxSizing: 'border-box' }}
+                      value={editText}
+                      onChange={e => setEditText(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit() }
+                        if (e.key === 'Escape') { setEditingMsg(null); setEditText('') }
+                      }}
+                    />
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '5px' }}>
+                      <button onClick={saveEdit} style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '11px', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', padding: '4px 12px', background: '#00C4B4', border: 'none', borderRadius: '4px', color: '#000', cursor: 'pointer' }}>Save</button>
+                      <button onClick={() => { setEditingMsg(null); setEditText('') }} style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '11px', letterSpacing: '1px', textTransform: 'uppercase', padding: '4px 12px', background: 'none', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', color: '#999', cursor: 'pointer' }}>Cancel</button>
+                      <span style={{ fontSize: '11px', color: '#555', alignSelf: 'center' }}>Enter to save · Esc to cancel</span>
+                    </div>
+                  </div>
+                ) : (
                   <div style={{ fontSize: '14px', color: '#ccc', lineHeight: 1.6, wordBreak: 'break-word', opacity: msg.optimistic ? 0.5 : 1, transition: 'opacity 0.2s' }}>
                     <MessageContent content={msg.content} currentUserId={userId} profiles={profiles} />
+                    {msg.edited_at && (
+                      <span style={{ fontSize: '10px', color: '#555', marginLeft: '6px', fontFamily: 'Barlow Condensed, sans-serif', letterSpacing: '0.5px' }}>(edited)</span>
+                    )}
                   </div>
                 )}
                 {msg.image_url && (
@@ -568,6 +603,12 @@ function MessageThread({ channel, session, profile, isMobile, onBack, onMarkRead
                   <button onClick={() => setShowEmojiPicker(showEmojiPicker === msg.id ? null : msg.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '2px', lineHeight: 1, color: '#555' }}>+</button>
                   <div style={{ width: '1px', background: 'rgba(255,255,255,0.1)', margin: '0 2px' }} />
                   <button onClick={() => { setReplyTo(msg); textareaRef.current?.focus() }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '2px 4px', lineHeight: 1, color: '#999', fontFamily: 'Barlow Condensed, sans-serif', letterSpacing: '0.5px' }}>↩ Reply</button>
+                  {msg.athlete_id === userId && msg.content && (
+                    <>
+                      <div style={{ width: '1px', background: 'rgba(255,255,255,0.1)', margin: '0 2px' }} />
+                      <button onClick={() => { setEditingMsg(msg); setEditText(msg.content) }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', padding: '2px 4px', lineHeight: 1, color: '#999', fontFamily: 'Barlow Condensed, sans-serif', letterSpacing: '0.5px' }}>✏️ Edit</button>
+                    </>
+                  )}
                 </div>
               )}
 
