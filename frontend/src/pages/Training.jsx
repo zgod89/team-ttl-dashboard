@@ -390,7 +390,14 @@ export default function Training({ session, profile }) {
   const [connectedCount, setConnectedCount] = useState(0)
   const [disconnecting, setDisconnecting] = useState(false)
   const [searchParams] = useSearchParams()
-  const isMobile = window.innerWidth < 768
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
   const isConnected = !!profile?.strava_athlete_id
 
   useEffect(() => {
@@ -401,15 +408,24 @@ export default function Training({ session, profile }) {
   async function loadActivities() {
     setLoading(true)
     try {
-      const res = await fetch('/api/strava/activities')
+      // Fast load — 14 days for the feed
+      const res = await fetch('/api/strava/activities?days=14')
       if (!res.ok) throw new Error('Failed to load activities')
       const data = await res.json()
       setActivities(data.activities || [])
       setConnectedCount(data.connectedCount || 0)
+      setLoading(false)
+
+      // Background load — 90 days for leaderboard, streaks, peak week
+      const res90 = await fetch('/api/strava/activities?days=90')
+      if (res90.ok) {
+        const data90 = await res90.json()
+        setActivities(data90.activities || [])
+      }
     } catch (err) {
       setError(err.message)
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   async function loadUpcomingRaces() {
