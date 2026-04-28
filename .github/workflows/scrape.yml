@@ -1,7 +1,8 @@
-name: Daily Race Scraper
+name: Daily Race Scraper & Strava Sync
 on:
   schedule:
-    - cron: '0 6 * * *'   # 6am UTC daily
+    - cron: '0 6 * * *'    # 6am UTC daily — race scraper
+    - cron: '0 */2 * * *'  # every 2 hours — Strava sync
   workflow_dispatch:
 
 jobs:
@@ -18,7 +19,8 @@ jobs:
         run: npm install
         working-directory: ./backend
 
-      - name: Run scraper
+      - name: Run race scraper
+        if: github.event.schedule == '0 6 * * *' || github.event_name == 'workflow_dispatch'
         run: node scraper.js
         working-directory: ./backend
         env:
@@ -28,3 +30,12 @@ jobs:
           WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
           WHATSAPP_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_ID }}
           WHATSAPP_CHANNEL_ID: ${{ secrets.WHATSAPP_CHANNEL_ID }}
+
+      - name: Run Strava sync
+        run: node strava-sync.js
+        working-directory: ./backend
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
+          STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
