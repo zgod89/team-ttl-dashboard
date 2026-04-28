@@ -161,7 +161,6 @@ export default function Home({ session }) {
   async function loadWeek() {
     const { start, end } = getWeekRange()
     const userId = session.user.id
-    await ensureProfile()
     const [racesRes, profileRes] = await Promise.all([
       supabase
         .from('races')
@@ -170,6 +169,7 @@ export default function Home({ session }) {
         .lte('race_date', end)
         .order('race_date'),
       supabase.from('profiles').select('*').eq('id', userId).single(),
+      ensureProfile(),
     ])
     if (racesRes.data) setWeekRaces(racesRes.data.filter(r => r.race_entries?.length > 0))
     if (profileRes.data) setProfile(profileRes.data)

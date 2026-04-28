@@ -23,21 +23,8 @@ function AppRoutes({ session, profile, setProfile }) {
   }, [])
 
   async function loadUnreadCount() {
-    const userId = session.user.id
-    const { data: channels } = await supabase.from('channels').select('id')
-    const { data: reads } = await supabase.from('channel_reads').select('*').eq('athlete_id', userId)
-    if (!channels) return
-    const readsMap = {}
-    reads?.forEach(r => { readsMap[r.channel_id] = r.last_read_at })
-    let total = 0
-    for (const ch of channels) {
-      const lastRead = readsMap[ch.id]
-      const q = supabase.from('messages').select('*', { count: 'exact', head: true }).eq('channel_id', ch.id)
-      if (lastRead) q.gt('created_at', lastRead)
-      const { count } = await q
-      total += count || 0
-    }
-    setUnreadCount(total)
+    const { data, error } = await supabase.rpc('get_unread_count', { p_user_id: session.user.id })
+    if (!error) setUnreadCount(data || 0)
   }
 
   const handleProfileSave = async () => {
