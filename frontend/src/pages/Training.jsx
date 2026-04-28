@@ -313,7 +313,7 @@ function WeeklySummary({ activities }) {
     <div style={{ background: 'linear-gradient(135deg, rgba(252,76,2,0.08) 0%, rgba(0,0,0,0) 60%)', border: '1px solid rgba(252,76,2,0.2)', borderRadius: '12px', padding: '1.25rem 1.5rem', marginBottom: '1.5rem', position: 'relative', overflow: 'hidden' }}>
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: 'linear-gradient(90deg, #FC4C02, #FF3D8B)' }} />
       <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '12px', letterSpacing: '3px', textTransform: 'uppercase', color: STRAVA_ORANGE, marginBottom: '1rem' }}>This Week — Team Training</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
         {stats.map(stat => (
           <div key={stat.label}>
             <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '11px', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#555', marginBottom: '4px' }}>{stat.emoji} {stat.label}</div>
@@ -331,28 +331,32 @@ function ActivityCard({ activity }) {
   const cfg = getTypeConfig(activity.type)
   return (
     <a href={activity.strava_url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
-      <div style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '1rem 1.25rem', display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center', gap: '12px', transition: 'border-color 0.15s, background 0.15s', cursor: 'pointer', marginBottom: '8px' }}
-        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(252,76,2,0.3)'; e.currentTarget.style.background = '#1a1a1a' }}
-        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.background = '#161616' }}
+      <div style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '6px', transition: 'border-color 0.15s', cursor: 'pointer', marginBottom: '8px' }}
+        onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(252,76,2,0.3)'}
+        onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}
       >
-        <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: cfg.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>{cfg.emoji}</div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
-            <Avatar name={activity.athlete_name} avatarColor={activity.athlete_avatar_color} avatarUrl={activity.athlete_avatar_url} size={20} />
-            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '12px', color: '#999' }}>{activity.athlete_name}</span>
+        {/* Top row: icon + name + time */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: cfg.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>{cfg.emoji}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+              <Avatar name={activity.athlete_name} avatarColor={activity.athlete_avatar_color} avatarUrl={activity.athlete_avatar_url} size={16} />
+              <span style={{ fontSize: '12px', color: '#999', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{activity.athlete_name}</span>
+            </div>
+            <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '15px', fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{activity.name}</div>
           </div>
-          <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '16px', fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '2px' }}>{activity.name}</div>
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            {activity.distance && <span style={{ fontSize: '12px', color: cfg.color, fontWeight: 600, fontFamily: 'Barlow Condensed, sans-serif' }}>{activity.distance}</span>}
-            {activity.duration && <span style={{ fontSize: '12px', color: '#999' }}>{activity.duration}</span>}
-            {activity.elevation && <span style={{ fontSize: '12px', color: '#555' }}>↑ {activity.elevation}</span>}
-            {activity.average_heartrate && <span style={{ fontSize: '12px', color: '#555' }}>♥ {activity.average_heartrate} bpm</span>}
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <div style={{ fontSize: '11px', color: '#555' }}>{timeAgo(activity.start_date)}</div>
+            <div style={{ fontSize: '10px', color: STRAVA_ORANGE, marginTop: '2px' }}>View →</div>
           </div>
         </div>
-        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <div style={{ fontSize: '11px', color: '#555', marginBottom: '4px' }}>{timeAgo(activity.start_date)}</div>
-          {activity.kudos > 0 && <div style={{ fontSize: '11px', color: '#555' }}>👍 {activity.kudos}</div>}
-          <div style={{ fontSize: '10px', color: STRAVA_ORANGE, marginTop: '4px', fontFamily: 'Barlow Condensed, sans-serif', letterSpacing: '0.5px' }}>View →</div>
+        {/* Stats row */}
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', paddingLeft: '46px' }}>
+          {activity.distance && <span style={{ fontSize: '13px', color: cfg.color, fontWeight: 600, fontFamily: 'Barlow Condensed, sans-serif' }}>{activity.distance}</span>}
+          {activity.duration && <span style={{ fontSize: '13px', color: '#999' }}>{activity.duration}</span>}
+          {activity.elevation && <span style={{ fontSize: '13px', color: '#555' }}>↑ {activity.elevation}</span>}
+          {activity.average_heartrate && <span style={{ fontSize: '13px', color: '#555' }}>♥ {activity.average_heartrate} bpm</span>}
+          {activity.kudos > 0 && <span style={{ fontSize: '13px', color: '#555' }}>👍 {activity.kudos}</span>}
         </div>
       </div>
     </a>
@@ -386,7 +390,7 @@ export default function Training({ session, profile }) {
   const [connectedCount, setConnectedCount] = useState(0)
   const [disconnecting, setDisconnecting] = useState(false)
   const [searchParams] = useSearchParams()
-  const userId = session.user.id
+  const isMobile = window.innerWidth < 768
   const isConnected = !!profile?.strava_athlete_id
 
   useEffect(() => {
@@ -483,10 +487,10 @@ export default function Training({ session, profile }) {
           <WeeklySummary activities={feedActivities} />
 
           {/* Main layout: feed + sidebar */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '1.5rem', alignItems: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 280px', gap: '1.5rem', alignItems: 'start' }}>
 
             {/* Left: activity feed */}
-            <div>
+            <div style={{ minWidth: 0 }}>
               {feedActivities.length === 0 ? (
                 <div style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '4rem 2rem', textAlign: 'center' }}>
                   <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏊🚴🏃</div>
@@ -522,8 +526,8 @@ export default function Training({ session, profile }) {
               )}
             </div>
 
-            {/* Right: sidebar */}
-            <div style={{ position: 'sticky', top: '72px' }}>
+            {/* Right: sidebar — shows above feed on mobile */}
+            <div style={{ position: isMobile ? 'static' : 'sticky', top: '72px', order: isMobile ? -1 : 0 }}>
               <WeeklyLeaderboard activities={activities} />
               <TrainingStreaks activities={activities} />
             </div>
