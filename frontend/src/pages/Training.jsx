@@ -303,22 +303,22 @@ function WeeklySummary({ activities }) {
   const totalRunKm = runs.reduce((s, a) => s + (a.distance_m || 0), 0) / 1000
 
   const stats = [
-    { label: 'Sessions', value: thisWeek.length, sub: 'this week', color: '#fff' },
-    { label: 'Swim', value: totalSwimKm > 0 ? `${totalSwimKm.toFixed(1)} km` : '—', sub: `${swims.length} session${swims.length !== 1 ? 's' : ''}`, color: '#00C4B4', emoji: '🏊' },
-    { label: 'Bike', value: totalBikeKm > 0 ? `${totalBikeKm.toFixed(0)} km` : '—', sub: `${bikes.length} session${bikes.length !== 1 ? 's' : ''}`, color: '#FF5A1F', emoji: '🚴' },
-    { label: 'Run', value: totalRunKm > 0 ? `${totalRunKm.toFixed(1)} km` : '—', sub: `${runs.length} session${runs.length !== 1 ? 's' : ''}`, color: '#FF3D8B', emoji: '🏃' },
+    { label: 'Sessions', value: thisWeek.length, sub: 'this week', color: '#fff', emoji: '🏅' },
+    { label: 'Swim', value: totalSwimKm > 0 ? `${totalSwimKm.toFixed(1)} km` : `${swims.length} sessions`, sub: `${swims.length} session${swims.length !== 1 ? 's' : ''}`, color: '#00C4B4', emoji: '🏊' },
+    { label: 'Bike', value: totalBikeKm > 0 ? `${totalBikeKm.toFixed(0)} km` : `${bikes.length} sessions`, sub: `${bikes.length} session${bikes.length !== 1 ? 's' : ''}`, color: '#FF5A1F', emoji: '🚴' },
+    { label: 'Run', value: totalRunKm > 0 ? `${totalRunKm.toFixed(1)} km` : `${runs.length} sessions`, sub: `${runs.length} session${runs.length !== 1 ? 's' : ''}`, color: '#FF3D8B', emoji: '🏃' },
   ]
 
   return (
     <div style={{ background: 'linear-gradient(135deg, rgba(252,76,2,0.08) 0%, rgba(0,0,0,0) 60%)', border: '1px solid rgba(252,76,2,0.2)', borderRadius: '12px', padding: '1.25rem 1.5rem', marginBottom: '1.5rem', position: 'relative', overflow: 'hidden' }}>
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: 'linear-gradient(90deg, #FC4C02, #FF3D8B)' }} />
       <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '12px', letterSpacing: '3px', textTransform: 'uppercase', color: STRAVA_ORANGE, marginBottom: '1rem' }}>This Week — Team Training</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
         {stats.map(stat => (
           <div key={stat.label}>
             <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '11px', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#555', marginBottom: '4px' }}>{stat.emoji} {stat.label}</div>
-            <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '26px', fontWeight: 700, color: stat.color, lineHeight: 1 }}>{stat.value}</div>
-            <div style={{ fontSize: '11px', color: '#555', marginTop: '2px' }}>{stat.sub}</div>
+            <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '22px', fontWeight: 700, color: stat.value === 0 || stat.value === '0 sessions' ? '#333' : stat.color, lineHeight: 1 }}>{typeof stat.value === 'number' ? stat.value : stat.value}</div>
+            <div style={{ fontSize: '11px', color: '#444', marginTop: '2px' }}>{stat.sub}</div>
           </div>
         ))}
       </div>
@@ -483,6 +483,9 @@ export default function Training({ session, profile }) {
           {/* Monthly recap — only shows first 7 days of month */}
           <MonthlyTeamSummary activities={activities} />
 
+          {/* My next race countdown — once, above everything */}
+          <RaceCountdown upcomingRaces={upcomingRaces} athleteId={userId} />
+
           {/* Weekly summary bar */}
           <WeeklySummary activities={feedActivities} />
 
@@ -500,29 +503,18 @@ export default function Training({ session, profile }) {
                   </div>
                 </div>
               ) : (
-                Object.entries(grouped).map(([day, dayActivities]) => {
-                  // For each day, check if any athletes have peak week or race countdown
-                  const dayAthletes = [...new Set(dayActivities.map(a => a.athlete_id))]
-                  return (
-                    <div key={day} style={{ marginBottom: '1.5rem' }}>
-                      <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '12px', letterSpacing: '2px', textTransform: 'uppercase', color: '#444', marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{day}</div>
+                Object.entries(grouped).map(([day, dayActivities]) => (
+                  <div key={day} style={{ marginBottom: '1.5rem' }}>
+                    <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '12px', letterSpacing: '2px', textTransform: 'uppercase', color: '#444', marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{day}</div>
 
-                      {/* Per-athlete callouts for this day's first appearance */}
-                      {dayAthletes.map(athleteId => {
-                        const act = dayActivities.find(a => a.athlete_id === athleteId)
-                        const isFirstAppearanceToday = feedActivities.findIndex(a => a.athlete_id === athleteId) === feedActivities.indexOf(dayActivities[0])
-                        return (
-                          <div key={athleteId}>
-                            <PeakWeekCallout activities={activities} athleteId={athleteId} />
-                            <RaceCountdown upcomingRaces={upcomingRaces} athleteId={athleteId} athleteName={act?.athlete_name} />
-                          </div>
-                        )
-                      })}
+                    {/* Peak week callout — only on most recent day */}
+                    {day === Object.keys(grouped)[0] && feedAthletes.map(athleteId => (
+                      <PeakWeekCallout key={athleteId} activities={activities} athleteId={athleteId} />
+                    ))}
 
-                      {dayActivities.map(act => <ActivityCard key={act.id} activity={act} />)}
-                    </div>
-                  )
-                })
+                    {dayActivities.map(act => <ActivityCard key={act.id} activity={act} />)}
+                  </div>
+                ))
               )}
             </div>
 
