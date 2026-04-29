@@ -1,6 +1,6 @@
 # ThatTriathlonLife — Team Dashboard
 
-A private, invite-only race tracking and team coordination platform for ThatTriathlonLife athletes. Built to replace WhatsApp race planning with a purpose-built tool that automatically tracks IRONMAN, 70.3, and triathlon events worldwide.
+A private, invite-only race tracking and team coordination platform for ThatTriathlonLife athletes. Built to replace WhatsApp race planning and group chats with a purpose-built tool that automatically tracks IRONMAN, 70.3, and triathlon events worldwide.
 
 ---
 
@@ -14,9 +14,9 @@ A private, invite-only race tracking and team coordination platform for ThatTria
 
 **Team** — Roster of all active team members and their race entries.
 
-**Training** — Team training feed powered by Strava. Activities sync automatically every hour via GitHub Actions and are served instantly from Supabase — no live Strava API calls at page load. Features include a weekly team summary (swim/bike/run totals), weekly leaderboard (score = sessions × 10 + hours × 5), weekly training streaks, peak week callouts, monthly team recap, and per-activity race countdown badges. Athletes can trigger an immediate manual sync with the Refresh button. Responsive two-column layout on desktop, single column on mobile.
+**Training** — Team training feed powered by Strava. Activities sync automatically every hour via GitHub Actions and are served instantly from Supabase — no live Strava API calls at page load. Features include a weekly team summary (swim/bike/run totals), weekly leaderboard (score = sessions × 10 + hours × 5), weekly training streaks, peak week callouts, monthly team recap, and per-activity race countdown badges. Activity cards show available metrics conditionally — pace, power (watts + normalized power), cadence, heart rate, suffer score, PR count, and kudos — only displaying fields the athlete has made public on Strava. Athletes can trigger an immediate manual sync with the Refresh button. Responsive two-column layout on desktop, single column on mobile.
 
-**Messages** — Built-in team messaging to replace WhatsApp. Channels include a General channel, topic channels (admin-created), and race-specific threads auto-created when athletes discuss a race. Supports text, image sharing, emoji reactions, Discord-style replies with quoted context, @mentions with a dedicated Mentions view and unread badge, and message editing. Messages are real-time via Supabase subscriptions with optimistic UI for instant feedback.
+**Messages** — Built-in team messaging replacing WhatsApp. Channels are grouped into General, Training, Groups, and Regions — mirroring the existing WhatsApp group structure — plus Race Threads auto-created when athletes discuss a race. The Announcements channel is admin-only. Supports text, image sharing, emoji reactions, Discord-style replies with quoted context, @mentions with a dedicated Mentions view and unread badge, and message editing. Messages are real-time via Supabase subscriptions with optimistic UI for instant feedback. Sections are collapsible to keep the sidebar clean.
 
 **Discounts** — Partner discount codes managed by admins in-app. Shows brand logo, discount amount, copy-to-clipboard code button, expiry countdown, and single-use/rolling offer badges. Expired discounts auto-archive. No code deploy needed to add or update discounts.
 
@@ -43,8 +43,9 @@ Frontend (React + Vite)  ←→  Supabase (Auth + PostgreSQL + Storage + Realtim
         ↕                              ↑
 Vercel Serverless Fns          GitHub Actions
   /api/race-details              ├── Race scraper (6am UTC daily)
-  /api/strava/callback           └── Strava sync (every hour)
+  /api/strava/callback           └── Strava sync (every hour) → calls /api/strava/sync
   /api/strava/refresh
+  /api/strava/sync               ← Vercel serverless fn, called by GitHub Actions
   /api/strava/disconnect
 ```
 
@@ -75,6 +76,7 @@ Vercel Serverless Fns          GitHub Actions
 │   │   └── strava/
 │   │       ├── callback.js         # OAuth callback — exchanges code for tokens
 │   │       ├── refresh.js          # Manual sync trigger for one user
+│   │       ├── sync.js             # Full-team hourly sync — called by GitHub Actions
 │   │       └── disconnect.js       # Remove Strava tokens from profile
 │   ├── src/
 │   │   ├── pages/
@@ -102,14 +104,14 @@ Vercel Serverless Fns          GitHub Actions
 │   └── vercel.json
 ├── backend/
 │   ├── scraper.js                  # Race scraper + race channel cleanup
-│   ├── strava-sync.js              # Strava activity sync (all athletes)
+│   ├── strava-sync.js              # Legacy sync script (kept for manual runs)
 │   └── package.json
 ├── supabase/
 │   └── schema.sql
 ├── .github/
 │   └── workflows/
 │       ├── scrape-races.yml        # Race scraper (6am UTC daily)
-│       └── strava-sync.yml         # Strava sync (every hour)
+│       └── strava-sync.yml         # Calls /api/strava/sync every hour
 ├── .env.example
 ├── FLUTTER_INTEGRATION.md
 └── README.md
@@ -181,6 +183,7 @@ Required environment variables in Vercel dashboard:
 | `SUPABASE_SERVICE_KEY` | Supabase service role key (used in serverless functions) |
 | `STRAVA_CLIENT_ID` | Strava app Client ID |
 | `STRAVA_CLIENT_SECRET` | Strava app Client Secret |
+| `CRON_SECRET` | Random secret — authenticates GitHub Actions → `/api/strava/sync` calls |
 
 ### GitHub Actions
 
@@ -193,11 +196,14 @@ Two separate workflow files handle the two scheduled jobs. Add these secrets to 
 | `TRIATHLON_API_KEY` | triathlon.org API key |
 | `STRAVA_CLIENT_ID` | Strava app Client ID |
 | `STRAVA_CLIENT_SECRET` | Strava app Client Secret |
+| `CRON_SECRET` | Same value as Vercel `CRON_SECRET` — sent as Bearer token to `/api/strava/sync` |
 | `WHATSAPP_TOKEN` | Meta system user token *(disabled)* |
 | `WHATSAPP_PHONE_ID` | Meta phone number ID *(disabled)* |
 | `WHATSAPP_CHANNEL_ID` | WhatsApp channel ID *(disabled)* |
 
-The race scraper runs at 6am UTC daily. The Strava sync runs every hour. Both can be triggered manually via GitHub → Actions → Run workflow.
+The race scraper runs at 6am UTC daily. The Strava sync runs every hour via GitHub Actions calling `/api/strava/sync` — this avoids Vercel Hobby plan cron limitations. Both can be triggered manually via GitHub → Actions → Run workflow.
+
+> **Why GitHub Actions calls Vercel instead of running Node directly:** Vercel Hobby plan only supports once-daily cron jobs. GitHub Actions handles the hourly schedule and calls the Vercel serverless function, which does the actual sync work. This keeps all Strava logic in one place (`/api/strava/sync.js`) and makes both manual and scheduled runs use identical code paths.
 
 ---
 
@@ -208,14 +214,14 @@ The race scraper runs at 6am UTC daily. The Strava sync runs every hour. Both ca
 | `profiles` | Team members — name, email, avatar, role, WhatsApp, Strava tokens, streak data |
 | `races` | All races — name, type, date, location, coordinates, source, URL |
 | `race_entries` | Which athlete is entered in which race |
-| `channels` | Messaging channels — general, topic, race threads |
+| `channels` | Messaging channels — type, category (general/training/regions/interest/race), is_readonly, sort_order |
 | `messages` | Messages — content, image URL, reply_to, edited_at |
 | `message_reactions` | Emoji reactions on messages |
 | `message_mentions` | @mention tracking per message |
 | `channel_reads` | Last-read timestamps per user per channel |
 | `discounts` | Partner discount codes — brand, code, amount, expiry, logo |
-| `strava_activities` | Strava activity feed — 14-day rolling window, pruned hourly |
-| `notification_log` | WhatsApp notification log |
+| `strava_activities` | Strava activity feed — 14-day rolling window, pruned hourly. Extended fields: power, speed, cadence, suffer score, PR count, kudos |
+| `notification_log` | WhatsApp notification log — admin-only via RLS |
 
 ### Key RLS Note
 The `message_mentions` SELECT policy must be:
@@ -227,15 +233,16 @@ CREATE POLICY "Read own mentions" ON message_mentions
 ### Performance
 Unread message count uses a Postgres function for a single round trip:
 ```sql
-CREATE OR REPLACE FUNCTION get_unread_count(p_user_id uuid)
-RETURNS int LANGUAGE sql STABLE AS $$
-  SELECT COALESCE(SUM(
-    (SELECT COUNT(*) FROM messages m
-     WHERE m.channel_id = c.id
-     AND (cr.last_read_at IS NULL OR m.created_at > cr.last_read_at))
-  ), 0)::int
+CREATE OR REPLACE FUNCTION get_unread_counts(p_user_id uuid)
+RETURNS TABLE(channel_id uuid, unread_count int) LANGUAGE sql STABLE AS $$
+  SELECT
+    c.id AS channel_id,
+    COUNT(m.id)::int AS unread_count
   FROM channels c
   LEFT JOIN channel_reads cr ON cr.channel_id = c.id AND cr.athlete_id = p_user_id
+  LEFT JOIN messages m ON m.channel_id = c.id
+    AND (cr.last_read_at IS NULL OR m.created_at > cr.last_read_at)
+  GROUP BY c.id
 $$;
 ```
 
@@ -247,7 +254,7 @@ Athletes connect Strava via OAuth from the Training page. Tokens are stored on t
 
 ### Sync Strategy
 
-The sync script (`backend/strava-sync.js`) runs every hour via GitHub Actions. It handles two distinct cases per athlete:
+The sync function (`/api/strava/sync.js`) runs every hour, triggered by GitHub Actions. It handles two distinct cases per athlete:
 
 **First connect — Bootstrap**
 On first connect, `strava_bootstrap_status` is set to `pending`. The next hourly sync detects this and performs a one-time historical walk-back: activities are fetched in reverse chronological order until a gap in weekly training is found. This computes the athlete's correct streak from their full Strava history without storing it — only the last 14 days of activities are written to `strava_activities`. The streak count is written to `profiles`. Bootstrap status then flips to `complete`.
@@ -266,6 +273,16 @@ Once bootstrapped, each hourly run fetches only the last 2 days of activities (a
 | Weekly streak (longest) | `profiles.training_streak_longest` — integer, updated each sync |
 | Historical activities | Never stored — fetched during bootstrap, used to compute streak, discarded |
 
+### Activity Fields Synced
+
+Standard fields (always present): `name`, `sport_type`, `start_date`, `distance`, `moving_time`, `elapsed_time`, `total_elevation_gain`
+
+Privacy-dependent fields (null if athlete has hidden them in Strava): `average_heartrate`, `max_heartrate`, `average_speed`, `average_watts`, `weighted_average_watts`, `average_cadence`, `suffer_score`, `map_summary_polyline`
+
+Social fields: `kudos_count`, `pr_count`, `achievement_count`
+
+The Training page renders all fields conditionally — stats only appear if the value is non-null, so privacy settings are respected automatically without any special handling.
+
 ### Streak Calculation
 
 Streaks are measured in **weeks**, matching Strava's own streak display. A week is active if the athlete logged at least one activity. The streak must include the current week or last week to be considered live — otherwise it resets to zero.
@@ -279,6 +296,23 @@ The Training page reads `training_streak_current` directly from `profiles` — n
 
 ---
 
+## Messaging Architecture
+
+- **Channel categories** — General, Training, Groups, Regions, Race Threads. Seeded to match existing WhatsApp group structure
+- **Announcements** — `is_readonly = true`, only admins can post, enforced at DB policy level
+- **Collapsible sections** — sidebar groups collapse/expand, defaulting to General open
+- **Channel icons** — colour-coded letter avatars per category (teal = General, amber = Training, purple = Groups, blue = Regions, orange = Race Threads)
+- **Real-time** — Supabase WebSocket subscriptions
+- **Optimistic UI** — messages appear at 50% opacity with "Sending..." label, confirmed on DB insert
+- **Deduplication** — subscription skips messages already added optimistically
+- **Replies** — Discord-style with quoted parent message
+- **@mentions** — matched against profile names, stored in `message_mentions`, surfaced in Mentions view with pink badge
+- **Edits** — inline edit on hover for own messages, marked with `(edited)` label
+- **Race threads** — auto-created on "Discuss This Race", auto-deleted 14 days post-race
+- **Unread badge** — calculated via single Postgres RPC call (`get_unread_counts`), collapsed sections show aggregate badge
+
+---
+
 ## Race Data Sources
 
 | Source | Coverage | Method |
@@ -287,19 +321,6 @@ The Training page reads `training_streak_current` directly from `profiles` — n
 | PTO Race Calendar | IRONMAN Full, 70.3 | Web scraping |
 
 Race channels (created when athletes discuss a race) auto-delete 14 days after the race date.
-
----
-
-## Messaging Architecture
-
-- **Real-time** — Supabase WebSocket subscriptions
-- **Optimistic UI** — messages appear at 50% opacity with "Sending..." label, confirmed on DB insert
-- **Deduplication** — subscription skips messages already added optimistically
-- **Replies** — Discord-style with quoted parent message
-- **@mentions** — matched against profile names, stored in `message_mentions`, surfaced in Mentions view with pink badge
-- **Edits** — inline edit on hover for own messages, marked with `(edited)` label
-- **Race threads** — auto-created on "Discuss This Race", auto-deleted 14 days post-race
-- **Unread badge** — calculated via single Postgres RPC call, refreshes every 30s
 
 ---
 
