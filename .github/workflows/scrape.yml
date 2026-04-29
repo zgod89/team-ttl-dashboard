@@ -1,41 +1,48 @@
-name: Daily Race Scraper & Strava Sync
+name: TTL — Race Scraper & Strava Sync
+
 on:
   schedule:
-    - cron: '0 6 * * *'    # 6am UTC daily — race scraper
-    - cron: '0 */2 * * *'  # every 2 hours — Strava sync
-  workflow_dispatch:
+    - cron: '0 6 * * *'   # Race scraper: 6am UTC daily
+    - cron: '0 * * * *'   # Strava sync:  every hour
+  workflow_dispatch:       # Manual trigger from GitHub Actions UI
 
 jobs:
-  scrape:
+  race-scraper:
+    name: Race Scraper
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 6 * * *'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
-
+          node-version: '20'
       - name: Install dependencies
-        run: npm install
-        working-directory: ./backend
-
+        run: cd backend && npm install
       - name: Run race scraper
-        if: github.event.schedule == '0 6 * * *' || github.event_name == 'workflow_dispatch'
-        run: node scraper.js
-        working-directory: ./backend
+        run: cd backend && node scraper.js
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          TRIATHLON_API_KEY: ${{ secrets.TRIATHLON_API_KEY }}
-          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
-          WHATSAPP_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_ID }}
-          WHATSAPP_CHANNEL_ID: ${{ secrets.WHATSAPP_CHANNEL_ID }}
+          TRIATHLON_API_KEY:    ${{ secrets.TRIATHLON_API_KEY }}
+          WHATSAPP_TOKEN:       ${{ secrets.WHATSAPP_TOKEN }}
+          WHATSAPP_PHONE_ID:    ${{ secrets.WHATSAPP_PHONE_ID }}
+          WHATSAPP_CHANNEL_ID:  ${{ secrets.WHATSAPP_CHANNEL_ID }}
 
+  strava-sync:
+    name: Strava Sync
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 * * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: cd backend && npm install
       - name: Run Strava sync
-        run: node strava-sync.js
-        working-directory: ./backend
+        run: cd backend && node strava-sync.js
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
+          STRAVA_CLIENT_ID:     ${{ secrets.STRAVA_CLIENT_ID }}
           STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
