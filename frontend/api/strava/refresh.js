@@ -69,16 +69,20 @@ export default async function handler(req, res) {
     if (!token) return res.status(400).json({ error: 'Could not refresh Strava token' })
 
     const after = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000)
+    const cutoffTimestamp = Date.now() - 90 * 24 * 60 * 60 * 1000
     let page = 1
     let allActivities = []
     while (true) {
-      const actRes = await fetch(`${STRAVA_API}/athlete/activities?after=${after}&per_page=100&page=${page}`, {
+      const actRes = await fetch(`${STRAVA_API}/athlete/activities?per_page=100&page=${page}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       if (!actRes.ok) return res.status(500).json({ error: `Strava API error: ${actRes.status}` })
       const batch = await actRes.json()
-      if (!batch.length) break
-      allActivities = allActivities.concat(batch)
+      if (!Array.isArray(batch) || !batch.length) break
+      const withinWindow = batch.filter(a => new Date(a.start_date).getTime() >= cutoffTimestamp)
+      allActivities = allActivities.concat(withinWindow)
+      const oldest = batch[batch.length - 1]
+      if (new Date(oldest.start_date).getTime() < cutoffTimestamp) break
       if (batch.length < 100) break
       page++
       await new Promise(r => setTimeout(r, 500))

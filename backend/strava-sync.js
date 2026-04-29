@@ -75,28 +75,36 @@ async function syncAthlete(profile, days = 90) {
     return 0
   }
 
-  const after = Math.floor((Date.now() - days * 24 * 60 * 60 * 1000) / 1000)
+  const cutoffTimestamp = Date.now() - days * 24 * 60 * 60 * 1000
 
-  // Paginate through all activities since cutoff
+  // Paginate without 'after' filter — Strava ignores 'after' when paginating
   let page = 1
   let allActivities = []
   while (true) {
     const res = await fetch(
-      `${STRAVA_API}/athlete/activities?after=${after}&per_page=100&page=${page}`,
+      `${STRAVA_API}/athlete/activities?per_page=100&page=${page}`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
 
     if (!res.ok) {
-      console.error(`[Strava] Failed to fetch activities for ${profile.full_name}: ${res.status}`)
+      console.error(`[Strava] Failed to fetch page ${page} for ${profile.full_name}: ${res.status}`)
       break
     }
 
     const batch = await res.json()
-    if (!batch.length) break
-    allActivities = allActivities.concat(batch)
+    if (!Array.isArray(batch) || !batch.length) break
+
+    // Filter to activities within our window
+    const withinWindow = batch.filter(a => new Date(a.start_date).getTime() >= cutoffTimestamp)
+    allActivities = allActivities.concat(withinWindow)
+
+    // If the oldest activity on this page is outside our window, we're done
+    const oldest = batch[batch.length - 1]
+    if (new Date(oldest.start_date).getTime() < cutoffTimestamp) break
+
     if (batch.length < 100) break // last page
     page++
-    await new Promise(r => setTimeout(r, 500)) // rate limit buffer
+    await new Promise(r => setTimeout(r, 500))
   }
 
   if (!allActivities.length) {
