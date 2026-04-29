@@ -36,8 +36,19 @@ function formatDur(s)  { if (!s) return null; const h = Math.floor(s / 3600), m 
 function formatElev(m) { if (!m) return null; return `↑ ${Math.round(m)} m` }
 function formatSpeed(ms, type) {
   if (!ms) return null
-  if (type === 'Swim') return `${(ms * 100 * 60 / 100).toFixed(0)}"/100m`.replace(/(\d+)(\d{2})/, '$1:$2')
-  if (type === 'Run')  { const minkm = 1000 / ms / 60; return `${Math.floor(minkm)}:${String(Math.round((minkm % 1) * 60)).padStart(2,'0')}/km` }
+  if (type === 'Swim') {
+    // ms = m/s → seconds per 100m → MM:SS /100m
+    const secPer100 = 100 / ms
+    const m = Math.floor(secPer100 / 60)
+    const s = Math.round(secPer100 % 60)
+    return `${m}:${String(s).padStart(2, '0')}/100m`
+  }
+  if (type === 'Run') {
+    const secPerKm = 1000 / ms
+    const m = Math.floor(secPerKm / 60)
+    const s = Math.round(secPerKm % 60)
+    return `${m}:${String(s).padStart(2, '0')}/km`
+  }
   return `${(ms * 3.6).toFixed(1)} km/h`
 }
 function formatWatts(w) { if (!w) return null; return `${Math.round(w)}w` }
