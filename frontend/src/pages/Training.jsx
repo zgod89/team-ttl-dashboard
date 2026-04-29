@@ -5,29 +5,16 @@ import { supabase } from '../lib/supabase'
 const STRAVA_ORANGE = '#FC4C02'
 
 const TYPE_CONFIG = {
-  'Swim':           { emoji: '🏊', color: '#00C4B4', bg: 'rgba(0,196,180,0.12)' },
-  'Bike':           { emoji: '🚴', color: '#FF5A1F', bg: 'rgba(255,90,31,0.12)' },
-  'Ride':           { emoji: '🚴', color: '#FF5A1F', bg: 'rgba(255,90,31,0.12)' },
-  'VirtualRide':    { emoji: '🚴', color: '#FF5A1F', bg: 'rgba(255,90,31,0.12)' },
-  'Run':            { emoji: '🏃', color: '#FF3D8B', bg: 'rgba(255,61,139,0.12)' },
-  'VirtualRun':     { emoji: '🏃', color: '#FF3D8B', bg: 'rgba(255,61,139,0.12)' },
-  'Walk':           { emoji: '🚶', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
-  'Hike':           { emoji: '🥾', color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
-  'WeightTraining': { emoji: '💪', color: '#E8B84B', bg: 'rgba(232,184,75,0.12)' },
-  'Workout':        { emoji: '⚡', color: '#E8B84B', bg: 'rgba(232,184,75,0.12)' },
-  'Yoga':           { emoji: '🧘', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
-  'Kayaking':       { emoji: '🛶', color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
-  'Soccer':         { emoji: '⚽', color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
-  'Tennis':         { emoji: '🎾', color: '#E8B84B', bg: 'rgba(232,184,75,0.12)' },
+  'Swim':     { emoji: '🏊', color: '#00C4B4', bg: 'rgba(0,196,180,0.12)' },
+  'Bike':     { emoji: '🚴', color: '#FF5A1F', bg: 'rgba(255,90,31,0.12)' },
+  'Run':      { emoji: '🏃', color: '#FF3D8B', bg: 'rgba(255,61,139,0.12)' },
+  'Walk':     { emoji: '🚶', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
+  'Hike':     { emoji: '🥾', color: '#34d399', bg: 'rgba(52,211,153,0.12)' },
+  'Strength': { emoji: '💪', color: '#E8B84B', bg: 'rgba(232,184,75,0.12)' },
+  'Workout':  { emoji: '⚡', color: '#E8B84B', bg: 'rgba(232,184,75,0.12)' },
 }
 
-function getType(sport_type) {
-  return TYPE_CONFIG[sport_type] || { emoji: '🏅', color: '#aaa', bg: 'rgba(255,255,255,0.06)' }
-}
-
-function stravaUrl(activityId) {
-  return `https://www.strava.com/activities/${activityId}`
-}
+function getType(type) { return TYPE_CONFIG[type] || { emoji: '🏅', color: '#aaa', bg: 'rgba(255,255,255,0.06)' } }
 
 function timeAgo(dateStr) {
   const diff = (Date.now() - new Date(dateStr)) / 1000
@@ -39,14 +26,22 @@ function timeAgo(dateStr) {
 
 function getWeekStart(date) {
   const d = new Date(date); const day = d.getDay()
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1)); d.setHours(0, 0, 0, 0); return d
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1)); d.setHours(0,0,0,0); return d
 }
 
 function calcScore(sessions, dur) { return Math.round(sessions * 10 + (dur / 3600) * 5) }
 
 function formatDist(m) { if (!m) return null; const km = m / 1000; return km >= 1 ? `${km.toFixed(1)} km` : `${Math.round(m)} m` }
 function formatDur(s)  { if (!s) return null; const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h > 0 ? `${h}h ${m}m` : `${m}m` }
-function formatElev(m) { if (!m) return null; return `${Math.round(m)} m` }
+function formatElev(m) { if (!m) return null; return `↑ ${Math.round(m)} m` }
+function formatSpeed(ms, type) {
+  if (!ms) return null
+  if (type === 'Swim') return `${(ms * 100 * 60 / 100).toFixed(0)}"/100m`.replace(/(\d+)(\d{2})/, '$1:$2')
+  if (type === 'Run')  { const minkm = 1000 / ms / 60; return `${Math.floor(minkm)}:${String(Math.round((minkm % 1) * 60)).padStart(2,'0')}/km` }
+  return `${(ms * 3.6).toFixed(1)} km/h`
+}
+function formatWatts(w) { if (!w) return null; return `${Math.round(w)}w` }
+function formatCadence(c, type) { if (!c) return null; return type === 'Run' ? `${Math.round(c * 2)} spm` : `${Math.round(c)} rpm` }
 
 // ── Error boundary ────────────────────────────────────────────────
 class ErrorBoundary extends Component {
@@ -75,17 +70,15 @@ function Av({ name, color, url, size = 26 }) {
 function WeeklySummary({ activities }) {
   const ws = getWeekStart(new Date())
   const week = activities.filter(a => new Date(a.start_date) >= ws)
-  const sw = week.filter(a => ['Swim'].includes(a.sport_type))
-  const bk = week.filter(a => ['Bike', 'Ride', 'VirtualRide'].includes(a.sport_type))
-  const rn = week.filter(a => ['Run', 'VirtualRun'].includes(a.sport_type))
+  const sw = week.filter(a => a.type === 'Swim'), bk = week.filter(a => a.type === 'Bike'), rn = week.filter(a => a.type === 'Run')
   const swKm = sw.reduce((s, a) => s + (a.distance || 0), 0) / 1000
   const bkKm = bk.reduce((s, a) => s + (a.distance || 0), 0) / 1000
   const rnKm = rn.reduce((s, a) => s + (a.distance || 0), 0) / 1000
   const cols = [
-    { e: '🏅', l: 'Sessions', v: week.length,                                        s: 'this week',                                        c: '#fff'    },
-    { e: '🏊', l: 'Swim',     v: swKm > 0 ? `${swKm.toFixed(1)} km` : sw.length,    s: `${sw.length} session${sw.length !== 1 ? 's' : ''}`, c: '#00C4B4' },
-    { e: '🚴', l: 'Bike',     v: bkKm > 0 ? `${bkKm.toFixed(0)} km` : bk.length,    s: `${bk.length} session${bk.length !== 1 ? 's' : ''}`, c: '#FF5A1F' },
-    { e: '🏃', l: 'Run',      v: rnKm > 0 ? `${rnKm.toFixed(1)} km` : rn.length,    s: `${rn.length} session${rn.length !== 1 ? 's' : ''}`, c: '#FF3D8B' },
+    { e: '🏅', l: 'Sessions', v: week.length,                              s: 'this week', c: '#fff' },
+    { e: '🏊', l: 'Swim',     v: swKm > 0 ? `${swKm.toFixed(1)} km` : sw.length, s: `${sw.length} session${sw.length !== 1 ? 's' : ''}`, c: '#00C4B4' },
+    { e: '🚴', l: 'Bike',     v: bkKm > 0 ? `${bkKm.toFixed(0)} km` : bk.length, s: `${bk.length} session${bk.length !== 1 ? 's' : ''}`, c: '#FF5A1F' },
+    { e: '🏃', l: 'Run',      v: rnKm > 0 ? `${rnKm.toFixed(1)} km` : rn.length,  s: `${rn.length} session${rn.length !== 1 ? 's' : ''}`,  c: '#FF3D8B' },
   ]
   return (
     <div style={{ background: 'rgba(252,76,2,0.06)', border: '1px solid rgba(252,76,2,0.18)', borderTop: '2px solid #FC4C02', borderRadius: 10, padding: '1rem 1.25rem', marginBottom: '1.25rem' }}>
@@ -144,22 +137,24 @@ function Leaderboard({ activities, profiles }) {
 }
 
 // ── Streaks ───────────────────────────────────────────────────────
-// Reads training_streak_current directly from profiles — computed by
-// strava-sync.js bootstrap/incremental logic, not derived from the feed.
-function Streaks({ profiles }) {
-  const athletes = Object.values(profiles)
-    .filter(p => p.strava_athlete_id) // only connected athletes
-    .map(p => ({
-      id:       p.id,
-      name:     p.full_name || 'Athlete',
-      color:    p.avatar_color,
-      url:      p.avatar_url,
-      streak:   p.training_streak_current || 0,
-      longest:  p.training_streak_longest || 0,
-      pending:  p.strava_bootstrap_status !== 'complete',
-    }))
-    .filter(a => a.streak > 0 || a.pending)
-    .sort((a, b) => b.streak - a.streak)
+function Streaks({ activities, profiles }) {
+  const map = {}
+  activities.forEach(a => {
+    if (!map[a.athlete_id]) {
+      const p = profiles[a.athlete_id] || {}
+      map[a.athlete_id] = { id: a.athlete_id, name: p.full_name || 'Athlete', color: p.avatar_color, url: p.avatar_url, weeks: new Set() }
+    }
+    map[a.athlete_id].weeks.add(getWeekStart(new Date(a.start_date)).getTime())
+  })
+  const thisW = getWeekStart(new Date()).getTime()
+  const lastW = thisW - 7 * 86400000
+  const streaks = Object.values(map).map(athlete => {
+    const sorted = [...athlete.weeks].sort((a, b) => b - a)
+    if (!sorted.includes(thisW) && !sorted.includes(lastW)) return { ...athlete, streak: 0 }
+    let streak = 0, exp = sorted.includes(thisW) ? thisW : lastW
+    for (const w of sorted) { if (w === exp) { streak++; exp -= 7 * 86400000 } else break }
+    return { ...athlete, streak }
+  }).filter(a => a.streak > 0).sort((a, b) => b.streak - a.streak)
 
   return (
     <div style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, overflow: 'hidden' }}>
@@ -167,22 +162,16 @@ function Streaks({ profiles }) {
         <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase', color: '#555' }}>Consistency</div>
         <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 15, fontWeight: 700, color: '#fff' }}>Weekly Streaks</div>
       </div>
-      {athletes.length === 0
+      {streaks.length === 0
         ? <div style={{ padding: '12px 14px', fontSize: 12, color: '#444', fontStyle: 'italic' }}>No active streaks yet</div>
-        : athletes.map((a, i) => (
-          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderBottom: i < athletes.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+        : streaks.map((a, i) => (
+          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderBottom: i < streaks.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
             <Av name={a.name} color={a.color} url={a.url} size={24} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 13, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</div>
-              {a.pending
-                ? <div style={{ fontSize: 10, color: '#555', fontStyle: 'italic' }}>Calculating streak...</div>
-                : <div style={{ fontSize: 10, color: '#555' }}>{a.streak} week{a.streak !== 1 ? 's' : ''} straight</div>
-              }
+              <div style={{ fontSize: 10, color: '#555' }}>{a.streak} week{a.streak !== 1 ? 's' : ''} straight</div>
             </div>
-            {a.pending
-              ? <div style={{ fontSize: 11, color: '#444', fontFamily: 'Barlow Condensed, sans-serif' }}>–</div>
-              : <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 13, fontWeight: 700, color: '#FF5A1F', flexShrink: 0 }}>{'🔥'.repeat(Math.min(a.streak, 3))} {a.streak}</div>
-            }
+            <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 13, fontWeight: 700, color: '#FF5A1F', flexShrink: 0 }}>{'🔥'.repeat(Math.min(a.streak, 3))} {a.streak}</div>
           </div>
         ))
       }
@@ -197,21 +186,19 @@ function PeakWeek({ activities, athleteId }) {
   mine.forEach(a => {
     const ws = getWeekStart(new Date(a.start_date)).getTime()
     if (!weeks[ws]) weeks[ws] = { sessions: 0, dur: 0, dist: 0 }
-    weeks[ws].sessions++
-    weeks[ws].dur  += a.moving_time || 0
-    weeks[ws].dist += a.distance    || 0
+    weeks[ws].sessions++; weeks[ws].dur += a.moving_time || 0; weeks[ws].dist += a.distance || 0
   })
   const entries = Object.entries(weeks)
-  if (entries.length < 2) return null
-  const thisW  = getWeekStart(new Date()).getTime()
+  if (entries.length < 3) return null
+  const thisW = getWeekStart(new Date()).getTime()
   const scored = entries.map(([ts, w]) => ({ ts: +ts, score: calcScore(w.sessions, w.dur), ...w }))
-  const peak   = scored.reduce((b, w) => w.score > b.score ? w : b, scored[0])
+  const peak = scored.reduce((b, w) => w.score > b.score ? w : b, scored[0])
   if (peak.ts !== thisW) return null
   return (
     <div style={{ background: 'rgba(232,184,75,0.08)', border: '1px solid rgba(232,184,75,0.25)', borderRadius: 8, padding: '10px 14px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
       <span style={{ fontSize: 20, flexShrink: 0 }}>🏆</span>
       <div>
-        <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 13, fontWeight: 700, color: '#E8B84B' }}>Biggest week in the last 14 days!</div>
+        <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 13, fontWeight: 700, color: '#E8B84B' }}>Biggest week of the last 90 days!</div>
         <div style={{ fontSize: 11, color: '#aaa' }}>{peak.sessions} sessions · {(peak.dur / 3600).toFixed(1)}h · {(peak.dist / 1000).toFixed(0)} km</div>
       </div>
     </div>
@@ -227,9 +214,9 @@ function MonthlySummary({ activities }) {
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
   const acts = activities.filter(a => { const d = new Date(a.start_date); return d.getMonth() === lm && d.getFullYear() === ly })
   if (!acts.length) return null
-  const swKm = acts.filter(a => a.sport_type === 'Swim').reduce((s, a) => s + (a.distance || 0), 0) / 1000
-  const bkKm = acts.filter(a => ['Bike','Ride','VirtualRide'].includes(a.sport_type)).reduce((s, a) => s + (a.distance || 0), 0) / 1000
-  const rnKm = acts.filter(a => ['Run','VirtualRun'].includes(a.sport_type)).reduce((s, a) => s + (a.distance || 0), 0) / 1000
+  const swKm = acts.filter(a => a.type === 'Swim').reduce((s, a) => s + (a.distance || 0), 0) / 1000
+  const bkKm = acts.filter(a => a.type === 'Bike').reduce((s, a) => s + (a.distance || 0), 0) / 1000
+  const rnKm = acts.filter(a => a.type === 'Run').reduce((s, a) => s + (a.distance || 0), 0) / 1000
   const hrs  = acts.reduce((s, a) => s + (a.moving_time || 0), 0) / 3600
   const aths = new Set(acts.map(a => a.athlete_id)).size
   return (
@@ -248,14 +235,13 @@ function MonthlySummary({ activities }) {
 
 // ── Activity card ─────────────────────────────────────────────────
 function ActivityCard({ activity, upcomingRaces }) {
-  const cfg     = getType(activity.sport_type)
+  const cfg = getType(activity.type)
   const myRaces = upcomingRaces.filter(r => r.athlete_id === activity.athlete_id)
   const nextRace = myRaces[0]
-  const daysOut  = nextRace ? Math.ceil((new Date(nextRace.race_date) - new Date()) / 86400000) : null
+  const daysOut = nextRace ? Math.ceil((new Date(nextRace.race_date) - new Date()) / 86400000) : null
   return (
-    <a href={stravaUrl(activity.id)} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'block', marginBottom: 8 }}>
-      <div
-        style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: 12, transition: 'border-color 0.15s' }}
+    <a href={activity.strava_url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'block', marginBottom: 8 }}>
+      <div style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: 12, transition: 'border-color 0.15s' }}
         onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(252,76,2,0.3)'}
         onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}
       >
@@ -274,11 +260,19 @@ function ActivityCard({ activity, upcomingRaces }) {
           <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 15, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{activity.name}</div>
           <span style={{ fontSize: 10, color: STRAVA_ORANGE, flexShrink: 0 }}>View →</span>
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {activity.distance         > 0 && <span style={{ fontSize: 12, color: cfg.color, fontWeight: 600, fontFamily: 'Barlow Condensed, sans-serif' }}>{formatDist(activity.distance)}</span>}
-          {activity.moving_time      > 0 && <span style={{ fontSize: 12, color: '#888' }}>{formatDur(activity.moving_time)}</span>}
-          {activity.total_elevation_gain > 0 && <span style={{ fontSize: 12, color: '#555' }}>↑ {formatElev(activity.total_elevation_gain)}</span>}
-          {activity.average_heartrate   && <span style={{ fontSize: 12, color: '#555' }}>♥ {Math.round(activity.average_heartrate)} bpm</span>}
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          {activity.distance > 0 && <span style={{ fontSize: 12, color: cfg.color, fontWeight: 600, fontFamily: 'Barlow Condensed, sans-serif' }}>{formatDist(activity.distance)}</span>}
+          {activity.moving_time > 0 && <span style={{ fontSize: 12, color: '#888' }}>{formatDur(activity.moving_time)}</span>}
+          {activity.total_elevation_gain > 0 && <span style={{ fontSize: 12, color: '#666' }}>{formatElev(activity.total_elevation_gain)}</span>}
+          {activity.average_speed > 0 && <span style={{ fontSize: 12, color: '#666' }}>{formatSpeed(activity.average_speed, activity.type)}</span>}
+          {activity.average_watts > 0 && <span style={{ fontSize: 12, color: '#a78bfa' }}>{formatWatts(activity.average_watts)}</span>}
+          {activity.weighted_average_watts > 0 && <span style={{ fontSize: 12, color: '#7c6fcd' }}>NP {formatWatts(activity.weighted_average_watts)}</span>}
+          {activity.average_cadence > 0 && <span style={{ fontSize: 12, color: '#666' }}>{formatCadence(activity.average_cadence, activity.type)}</span>}
+          {activity.average_heartrate > 0 && <span style={{ fontSize: 12, color: '#888' }}>♥ {Math.round(activity.average_heartrate)} bpm</span>}
+          {activity.suffer_score > 0 && <span style={{ fontSize: 12, color: '#555' }}>effort {activity.suffer_score}</span>}
+          {activity.pr_count > 0 && <span style={{ fontSize: 11, color: '#E8B84B', background: 'rgba(232,184,75,0.1)', borderRadius: 3, padding: '1px 5px' }}>🏆 {activity.pr_count} PR{activity.pr_count > 1 ? 's' : ''}</span>}
+          {activity.kudos_count > 0 && <span style={{ fontSize: 12, color: '#555' }}>👍 {activity.kudos_count}</span>}
+          {activity.trainer && <span style={{ fontSize: 11, color: '#444', background: 'rgba(255,255,255,0.04)', borderRadius: 3, padding: '1px 5px' }}>indoor</span>}
         </div>
       </div>
     </a>
@@ -305,26 +299,20 @@ function ConnectBanner({ userId }) {
 
 // ── Main ──────────────────────────────────────────────────────────
 function TrainingPage({ session, profile }) {
-  const [activities, setActivities]     = useState([])
-  const [profiles, setProfiles]         = useState({})   // map of id → profile
+  const [activities, setActivities]       = useState([])
+  const [profiles, setProfiles]           = useState({})   // map of id → profile
   const [upcomingRaces, setUpcomingRaces] = useState([])
-  const [syncing, setSyncing]           = useState(false)
-  const [lastSync, setLastSync]         = useState(null)
-  const [loading, setLoading]           = useState(true)
-  const [searchParams]                  = useSearchParams()
+  const [syncing, setSyncing]             = useState(false)
+  const [lastSync, setLastSync]           = useState(null)
+  const [loading, setLoading]             = useState(true)
+  const [searchParams]                    = useSearchParams()
 
   const userId      = session?.user?.id
   const isConnected = !!profile?.strava_athlete_id
 
-  useEffect(() => { loadAll() }, [])
-
-  // Poll for bootstrap completion if any athlete is still pending
   useEffect(() => {
-    const hasPending = Object.values(profiles).some(p => p.strava_bootstrap_status !== 'complete' && p.strava_athlete_id)
-    if (!hasPending) return
-    const interval = setInterval(() => loadProfiles(), 30000) // check every 30s
-    return () => clearInterval(interval)
-  }, [profiles])
+    loadAll()
+  }, [])
 
   async function loadAll() {
     setLoading(true)
@@ -333,30 +321,23 @@ function TrainingPage({ session, profile }) {
   }
 
   async function loadActivities() {
-    const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
     const { data } = await supabase
       .from('strava_activities')
-      .select('*')
+      .select('id, athlete_id, name, sport_type, start_date, start_date_local, distance, moving_time, elapsed_time, total_elevation_gain, average_heartrate, max_heartrate, map_summary_polyline, kudos_count, achievement_count, average_speed, max_speed, average_cadence, average_watts, max_watts, weighted_average_watts, kilojoules, suffer_score, pr_count, trainer, commute, gear_id, synced_at')
       .gte('start_date', cutoff)
       .order('start_date', { ascending: false })
-      .limit(500)
+      .limit(200)
     if (data) {
       setActivities(data)
-      if (data.length > 0) setLastSync(data[0].created_at)
+      if (data.length > 0) setLastSync(data[0].synced_at)
     }
   }
 
   async function loadProfiles() {
     const { data } = await supabase
       .from('profiles')
-      .select(`
-        id, full_name, avatar_color, avatar_url,
-        strava_athlete_id,
-        strava_bootstrap_status,
-        training_streak_current,
-        training_streak_longest,
-        training_streak_last_active
-      `)
+      .select('id, full_name, avatar_color, avatar_url')
       .not('strava_athlete_id', 'is', null)
     if (data) {
       const map = {}
@@ -387,8 +368,9 @@ function TrainingPage({ session, profile }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId }),
       })
+      const data = await res.json()
       if (res.ok) {
-        await loadAll()
+        await loadActivities()
         setLastSync(new Date().toISOString())
       }
     } catch (e) { console.error(e) }
@@ -396,16 +378,26 @@ function TrainingPage({ session, profile }) {
   }
 
   // Enrich activities with profile data
+  function deriveType(sportType) {
+    const map = { Swim: 'Swim', Ride: 'Bike', Run: 'Run', VirtualRide: 'Bike', VirtualRun: 'Run', TrailRun: 'Run', Walk: 'Walk', Hike: 'Hike', WeightTraining: 'Strength', Workout: 'Workout' }
+    return map[sportType] || sportType || 'Workout'
+  }
   const enriched = activities.map(a => ({
     ...a,
-    athlete_name:         profiles[a.athlete_id]?.full_name     || 'Athlete',
+    type: deriveType(a.sport_type),
+    strava_url: `https://www.strava.com/activities/${a.id}`,
+    athlete_name: profiles[a.athlete_id]?.full_name || 'Athlete',
     athlete_avatar_color: profiles[a.athlete_id]?.avatar_color,
-    athlete_avatar_url:   profiles[a.athlete_id]?.avatar_url,
+    athlete_avatar_url: profiles[a.athlete_id]?.avatar_url,
   }))
 
   const connectedCount = Object.keys(profiles).length
 
-  const grouped = enriched.reduce((acc, act) => {
+  // 14-day feed for display, 90-day for social features
+  const feedCutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
+  const feedActivities = enriched.filter(a => new Date(a.start_date) >= feedCutoff)
+
+  const grouped = feedActivities.reduce((acc, act) => {
     const key = new Date(act.start_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
     if (!acc[key]) acc[key] = []
     acc[key].push(act)
@@ -416,7 +408,7 @@ function TrainingPage({ session, profile }) {
     ? [...new Set(Object.values(grouped)[0].map(a => a.athlete_id))]
     : []
 
-  const syncAge   = lastSync ? Math.floor((Date.now() - new Date(lastSync)) / 60000) : null
+  const syncAge = lastSync ? Math.floor((Date.now() - new Date(lastSync)) / 60000) : null
   const syncLabel = syncAge === null ? '' : syncAge < 60 ? `${syncAge}m ago` : `${Math.floor(syncAge / 60)}h ago`
 
   return (
@@ -454,7 +446,7 @@ function TrainingPage({ session, profile }) {
 
       {searchParams.get('connected') === 'true' && (
         <div style={{ background: 'rgba(0,196,180,0.1)', border: '1px solid rgba(0,196,180,0.25)', borderRadius: 8, padding: '10px 14px', color: '#00C4B4', fontSize: 13, marginBottom: '1.25rem' }}>
-          ✓ Strava connected! Your activities will appear within the hour. Hit Refresh to sync your recent activities now.
+          ✓ Strava connected! Your activities will sync automatically every 2 hours. Hit Refresh to sync now.
         </div>
       )}
 
@@ -468,7 +460,7 @@ function TrainingPage({ session, profile }) {
           <div className="train-grid">
             {/* Feed */}
             <div style={{ minWidth: 0 }}>
-              {enriched.length === 0 ? (
+              {feedActivities.length === 0 ? (
                 <div style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '3rem 2rem', textAlign: 'center' }}>
                   <div style={{ fontSize: 40, marginBottom: 12 }}>🏊🚴🏃</div>
                   <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 18, fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', color: '#fff', marginBottom: 6 }}>No activities yet</div>
@@ -496,7 +488,7 @@ function TrainingPage({ session, profile }) {
             {/* Sidebar */}
             <div className="train-sidebar">
               <Leaderboard activities={enriched} profiles={profiles} />
-              <Streaks profiles={profiles} />
+              <Streaks activities={enriched} profiles={profiles} />
             </div>
           </div>
         </>

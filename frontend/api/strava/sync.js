@@ -1,7 +1,6 @@
 /**
  * Vercel Serverless Function — /api/strava/sync
  * Full-team Strava sync — called hourly by GitHub Actions
- * Mirrors the logic in refresh.js but runs for all connected athletes
  *
  * GET /api/strava/sync
  * Header: Authorization: Bearer <CRON_SECRET>
@@ -14,18 +13,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 )
 
-const STRAVA_API       = 'https://www.strava.com/api/v3'
-const NINETY_DAYS_MS   = 90 * 24 * 60 * 60 * 1000
-const CRON_SECRET      = process.env.CRON_SECRET
-
-function formatType(type) {
-  const map = {
-    Swim: 'Swim', Ride: 'Bike', Run: 'Run',
-    VirtualRide: 'Bike', VirtualRun: 'Run', TrailRun: 'Run',
-    Walk: 'Walk', Hike: 'Hike', WeightTraining: 'Strength', Workout: 'Workout',
-  }
-  return map[type] || type
-}
+const STRAVA_API     = 'https://www.strava.com/api/v3'
+const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000
+const CRON_SECRET    = process.env.CRON_SECRET
 
 async function getValidToken(profile) {
   const now = Math.floor(Date.now() / 1000)
@@ -60,9 +50,10 @@ async function syncAthlete(profile) {
   let allActivities = []
 
   while (true) {
-    const actRes = await fetch(`${STRAVA_API}/athlete/activities?per_page=100&page=${page}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const actRes = await fetch(
+      `${STRAVA_API}/athlete/activities?per_page=100&page=${page}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
     if (!actRes.ok) break
     const batch = await actRes.json()
     if (!Array.isArray(batch) || !batch.length) break
@@ -78,20 +69,48 @@ async function syncAthlete(profile) {
   if (!allActivities.length) return { synced: 0 }
 
   const rows = allActivities.map(act => ({
-    id:                act.id,
-    athlete_id:        profile.id,
-    name:              act.name,
-    type:              formatType(act.sport_type || act.type),
-    raw_type:          act.sport_type || act.type,
-    distance_m:        act.distance || 0,
-    duration_s:        act.moving_time || 0,
-    elevation_m:       act.total_elevation_gain || 0,
-    average_heartrate: act.average_heartrate ? Math.round(act.average_heartrate) : null,
-    average_speed:     act.average_speed || null,
-    kudos:             act.kudos_count || 0,
-    start_date:        act.start_date,
-    strava_url:        `https://www.strava.com/activities/${act.id}`,
-    synced_at:         new Date().toISOString(),
+    // --- Identity ---
+    id:                    act.id,
+    athlete_id:            profile.id,
+    name:                  act.name || null,
+
+    // --- Type ---
+    sport_type:            act.sport_type || act.type || null,
+
+    // --- Timing ---
+    start_date:            act.start_date,
+    start_date_local:      act.start_date_local || null,
+    moving_time:           act.moving_time || null,
+    elapsed_time:          act.elapsed_time || null,
+
+    // --- Distance & elevation ---
+    distance:              act.distance || null,
+    total_elevation_gain:  act.total_elevation_gain || null,
+
+    // --- Heart rate ---
+    average_heartrate:     act.average_heartrate || null,
+    max_heartrate:         act.max_heartrate || null,
+
+    // --- Map ---
+    map_summary_polyline:  act.map?.summary_polyline || null,
+
+    // --- Extra fields (added via migration below) ---
+    kudos_count:           act.kudos_count || 0,
+    achievement_count:     act.achievement_count || 0,
+    average_speed:         act.average_speed || null,
+    max_speed:             act.max_speed || null,
+    average_cadence:       act.average_cadence || null,
+    average_watts:         act.average_watts || null,
+    max_watts:             act.max_watts || null,
+    weighted_average_watts: act.weighted_average_watts || null,
+    kilojoules:            act.kilojoules || null,
+    suffer_score:          act.suffer_score || null,
+    pr_count:              act.pr_count || 0,
+    trainer:               act.trainer || false,
+    commute:               act.commute || false,
+    gear_id:               act.gear_id || null,
+    timezone:              act.timezone || null,
+    synced_at:             new Date().toISOString(),
   }))
 
   const { error } = await supabase
@@ -103,7 +122,6 @@ async function syncAthlete(profile) {
 }
 
 export default async function handler(req, res) {
-  // Auth check
   const auth = req.headers['authorization']
   if (!CRON_SECRET || auth !== `Bearer ${CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' })
@@ -113,7 +131,6 @@ export default async function handler(req, res) {
   const results = { synced: 0, skipped: 0, errors: [] }
 
   try {
-    // Fetch all athletes with Strava connected
     const { data: athletes, error: profilesErr } = await supabase
       .from('profiles')
       .select('id, full_name, strava_athlete_id, strava_access_token, strava_refresh_token, strava_token_expires_at')
@@ -123,15 +140,14 @@ export default async function handler(req, res) {
     if (profilesErr) throw new Error(`Failed to fetch profiles: ${profilesErr.message}`)
     if (!athletes?.length) return res.status(200).json({ message: 'No athletes connected', ...results })
 
-    // Sync in batches of 3 to respect Strava rate limits
     const CONCURRENCY = 3
     for (let i = 0; i < athletes.length; i += CONCURRENCY) {
       const batch = athletes.slice(i, i + CONCURRENCY)
       const batchResults = await Promise.all(batch.map(a => syncAthlete(a)))
       batchResults.forEach((r, idx) => {
-        if (r.skipped)      results.skipped++
-        else if (r.error)   results.errors.push({ athlete: batch[idx].full_name, error: r.error })
-        else                results.synced += r.synced || 0
+        if (r.skipped)    results.skipped++
+        else if (r.error) results.errors.push({ athlete: batch[idx].full_name, error: r.error })
+        else              results.synced += r.synced || 0
       })
     }
 
