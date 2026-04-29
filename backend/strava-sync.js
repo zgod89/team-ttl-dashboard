@@ -81,89 +81,118 @@ async function fetchActivities(token, { after, before, page = 1, perPage = 200 }
 
 // ── Streak helpers ────────────────────────────────────────────────────────
 
-/**
- * Given a sorted (desc) list of activity dates (YYYY-MM-DD strings),
- * walk back from today counting consecutive active days.
- * A "day" counts if the athlete had at least one activity.
- */
-function computeStreakFromDates(activityDates) {
-  if (!activityDates.length) return 0;
-
-  const unique = [...new Set(activityDates)].sort().reverse(); // most recent first
-  const today  = toDateStr(new Date());
-  const yesterday = toDateStr(new Date(Date.now() - 86400_000));
-
-  // Streak must include today or yesterday to be active
-  if (unique[0] !== today && unique[0] !== yesterday) return 0;
-
-  let streak = 0;
-  let cursor = unique[0] === today ? new Date() : new Date(Date.now() - 86400_000);
-
-  for (const dateStr of unique) {
-    const expected = toDateStr(cursor);
-    if (dateStr === expected) {
-      streak++;
-      cursor = new Date(cursor.getTime() - 86400_000);
-    } else if (dateStr < expected) {
-      // Gap found — streak ends
-      break;
-    }
-    // dateStr > expected shouldn't happen given sort, but skip if so
-  }
-
-  return streak;
-}
-
 function toDateStr(date) {
   return date.toISOString().split('T')[0];
 }
 
 /**
- * Incrementally update streak given the current profile state
- * and whether there was activity today or yesterday.
+ * Returns the Monday of the ISO week containing `date`, as a YYYY-MM-DD string.
+ * Streak unit is the week — matching Strava's own streak display.
+ */
+function weekKey(date) {
+  const d = new Date(date);
+  const day = d.getUTCDay(); // 0 = Sun
+  const diff = (day === 0 ? -6 : 1 - day); // shift to Monday
+  d.setUTCDate(d.getUTCDate() + diff);
+  d.setUTCHours(0, 0, 0, 0);
+  return d.toISOString().split('T')[0]; // 'YYYY-MM-DD' of that Monday
+}
+
+function currentWeekKey()  { return weekKey(new Date()); }
+function prevWeekKey()     { return weekKey(new Date(Date.now() - 7 * 86400_000)); }
+
+/**
+ * Given a list of activity date strings (YYYY-MM-DD, any order, may repeat),
+ * compute the current consecutive-week streak.
+ * A week is active if the athlete had at least one activity in it.
+ * The streak must include this week or last week to be considered active.
+ */
+function computeWeekStreakFromDates(activityDates) {
+  if (!activityDates.length) return 0;
+
+  // Collect unique active week keys, sorted descending (most recent first)
+  const activeWeeks = [...new Set(activityDates.map(d => weekKey(new Date(d))))].sort().reverse();
+
+  const thisWeek = currentWeekKey();
+  const lastWeek = prevWeekKey();
+
+  // Streak must include this week or last week
+  if (activeWeeks[0] !== thisWeek && activeWeeks[0] !== lastWeek) return 0;
+
+  let streak = 0;
+  let cursor = new Date(activeWeeks[0]); // start from the most recent active week
+
+  for (const wk of activeWeeks) {
+    const expected = toDateStr(cursor);
+    if (wk === expected) {
+      streak++;
+      cursor = new Date(cursor.getTime() - 7 * 86400_000); // step back one week
+    } else {
+      break; // gap found
+    }
+  }
+
+  return streak;
+}
+
+/**
+ * The oldest date we need to fetch to confirm a gap before the streak.
+ * If streak is N weeks, we need to go back N+1 weeks from the start of
+ * the current/last active week to be sure there's nothing before it.
+ */
+function streakConfirmedBeyond(activeWeeks, streak) {
+  if (!activeWeeks.length || streak === 0) return new Date();
+  const oldestStreakWeek = new Date(activeWeeks[streak - 1]); // Monday of oldest week in streak
+  // Go one more week back — if nothing there, gap is confirmed
+  return new Date(oldestStreakWeek.getTime() - 7 * 86400_000);
+}
+
+/**
+ * Incrementally update weekly streak given current profile state
+ * and activity dates from the recent sync window.
  */
 function incrementalStreakUpdate(profile, recentActivityDates) {
-  const today     = toDateStr(new Date());
-  const yesterday = toDateStr(new Date(Date.now() - 86400_000));
+  const thisWeek = currentWeekKey();
+  const lastWeek = prevWeekKey();
 
-  const hasToday     = recentActivityDates.includes(today);
-  const hasYesterday = recentActivityDates.includes(yesterday);
+  const activeWeeks = [...new Set(recentActivityDates.map(d => weekKey(new Date(d))))];
+  const hasThisWeek = activeWeeks.includes(thisWeek);
+  const hasLastWeek = activeWeeks.includes(lastWeek);
 
-  const lastActive = profile.training_streak_last_active; // 'YYYY-MM-DD' or null
-  let current  = profile.training_streak_current  ?? 0;
-  let longest  = profile.training_streak_longest  ?? 0;
+  const lastActive = profile.training_streak_last_active; // stored as week key (Monday date)
+  let current = profile.training_streak_current ?? 0;
+  let longest = profile.training_streak_longest ?? 0;
 
-  if (hasToday) {
-    if (lastActive === today) {
-      // Already counted — no change needed
-      return null;
-    } else if (lastActive === yesterday || current === 0) {
+  if (hasThisWeek) {
+    if (lastActive === thisWeek) {
+      return null; // already counted this week
+    } else if (lastActive === lastWeek || current === 0) {
       current += 1;
     } else {
-      // Gap between lastActive and today — streak broken
+      current = 1; // gap — restart
+    }
+    longest = Math.max(current, longest);
+    return { training_streak_current: current, training_streak_longest: longest, training_streak_last_active: thisWeek };
+  }
+
+  if (hasLastWeek) {
+    if (lastActive === lastWeek) return null; // already counted
+    const twoWeeksAgo = toDateStr(new Date(Date.now() - 14 * 86400_000));
+    if (lastActive >= twoWeeksAgo || current === 0) {
+      current += 1;
+    } else {
       current = 1;
     }
     longest = Math.max(current, longest);
-    return { training_streak_current: current, training_streak_longest: longest, training_streak_last_active: today };
+    return { training_streak_current: current, training_streak_longest: longest, training_streak_last_active: lastWeek };
   }
 
-  if (hasYesterday) {
-    if (lastActive === yesterday) return null; // already counted
-    if (lastActive === toDateStr(new Date(Date.now() - 2 * 86400_000)) || current === 0) {
-      current += 1;
-    } else {
-      current = 1;
-    }
-    longest = Math.max(current, longest);
-    return { training_streak_current: current, training_streak_longest: longest, training_streak_last_active: yesterday };
-  }
-
-  // No activity today or yesterday — streak broken if it was active
-  if (lastActive && lastActive < yesterday) {
+  // No activity this week or last — streak broken if lastActive is older than last week
+  if (lastActive && lastActive < lastWeek) {
     return { training_streak_current: 0 };
   }
 
-  return null; // nothing to update
+  return null;
 }
 
 // ── Activity upsert ───────────────────────────────────────────────────────
@@ -245,7 +274,7 @@ async function bootstrapAthlete(profile, token) {
       throw err;
     }
 
-    if (!activities.length) break; // no more history
+    if (!activities.length) break; // reached beginning of athlete's history
 
     for (const activity of activities) {
       const dateStr = activity.start_date_local.split('T')[0];
@@ -259,23 +288,26 @@ async function bootstrapAthlete(profile, token) {
       oldestActiveDate = dateStr;
     }
 
-    // Check if we've found a gap — walk back day by day from the oldest date
-    // to detect a break. We stop fetching once a gap is confirmed.
-    const streak = computeStreakFromDates(allDates);
+    // Compute streak from everything fetched so far
+    const streak = computeWeekStreakFromDates(allDates);
 
-    // If the oldest fetched date is further back than our computed streak
-    // would require, we've confirmed the gap — no need to fetch more pages.
-    const streakStartDate = new Date(Date.now() - streak * 86400_000);
-    const oldestFetched   = new Date(oldestActiveDate);
-    if (oldestFetched <= streakStartDate) {
+    // To confirm the streak we need to have fetched at least one week
+    // further back than the streak's oldest week. If the oldest activity
+    // we've fetched pre-dates the required gap window, we're done.
+    const activeWeeks = [...new Set(allDates.map(d => weekKey(new Date(d))))].sort().reverse();
+    const gapConfirmBefore = streakConfirmedBeyond(activeWeeks, streak);
+    const oldestFetched = new Date(oldestActiveDate);
+
+    if (oldestFetched <= gapConfirmBefore) {
       gapFound = true;
     }
 
     page++;
   }
 
-  const streakCurrent = computeStreakFromDates(allDates);
-  const lastActive    = allDates.sort().reverse()[0] ?? null;
+  const streakCurrent = computeWeekStreakFromDates(allDates);
+  const activeWeeks   = [...new Set(allDates.map(d => weekKey(new Date(d))))].sort().reverse();
+  const lastActive    = activeWeeks[0] ?? null; // store as week key (Monday date)
 
   // Store only feed window activities
   if (feedActivities.length) {
@@ -290,7 +322,7 @@ async function bootstrapAthlete(profile, token) {
     strava_last_synced_at:      new Date().toISOString(),
   }).eq('id', profile.id);
 
-  console.log(`  ✓ Bootstrap complete: streak = ${streakCurrent} days, feed activities = ${feedActivities.length}`);
+  console.log(`  ✓ Bootstrap complete: streak = ${streakCurrent} weeks, feed activities = ${feedActivities.length}`);
 }
 
 // ── Incremental sync ──────────────────────────────────────────────────────
@@ -309,7 +341,7 @@ async function incrementalSync(profile, token) {
   // Prune feed to FEED_DAYS rolling window
   await pruneOldActivities(profile.id);
 
-  // Compute streak update from recent activity dates
+  // Compute streak update from recent activity dates (weekly granularity)
   const recentDates = activities.map(a => a.start_date_local.split('T')[0]);
   const streakUpdate = incrementalStreakUpdate(profile, recentDates);
 
