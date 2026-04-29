@@ -1,25 +1,13 @@
 name: Strava Sync
 on:
-  # schedule disabled — sync now runs via Vercel cron (/api/strava/sync, hourly)
-  # Uncomment below to re-enable GitHub Actions schedule as a fallback
-  # schedule:
-  #   - cron: '0 * * * *'
-  workflow_dispatch: # Manual trigger still works from GitHub Actions UI
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
 jobs:
   sync:
-    name: Sync Strava Activities
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Install dependencies
-        run: cd backend && npm install
-      - name: Run Strava sync
-        run: cd backend && node strava-sync.js
-        env:
-          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          STRAVA_CLIENT_ID:     ${{ secrets.STRAVA_CLIENT_ID }}
-          STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
+      - name: Trigger Vercel sync function
+        run: |
+          curl -X GET https://team-ttl-dashboard.vercel.app/api/strava/sync \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
