@@ -1,10 +1,10 @@
 name: Strava Sync
-
 on:
-  schedule:
-    - cron: '0 * * * *'   # Every hour
-  workflow_dispatch:       # Manual trigger from GitHub Actions UI
-
+  # schedule disabled — sync now runs via Vercel cron (/api/strava/sync, hourly)
+  # Uncomment below to re-enable GitHub Actions schedule as a fallback
+  # schedule:
+  #   - cron: '0 * * * *'
+  workflow_dispatch: # Manual trigger still works from GitHub Actions UI
 jobs:
   sync:
     name: Sync Strava Activities
