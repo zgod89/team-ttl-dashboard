@@ -77,24 +77,34 @@ async function syncAthlete(profile, days = 90) {
 
   const after = Math.floor((Date.now() - days * 24 * 60 * 60 * 1000) / 1000)
 
-  const res = await fetch(
-    `${STRAVA_API}/athlete/activities?after=${after}&per_page=100`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  )
+  // Paginate through all activities since cutoff
+  let page = 1
+  let allActivities = []
+  while (true) {
+    const res = await fetch(
+      `${STRAVA_API}/athlete/activities?after=${after}&per_page=100&page=${page}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
 
-  if (!res.ok) {
-    console.error(`[Strava] Failed to fetch activities for ${profile.full_name}: ${res.status}`)
-    return 0
+    if (!res.ok) {
+      console.error(`[Strava] Failed to fetch activities for ${profile.full_name}: ${res.status}`)
+      break
+    }
+
+    const batch = await res.json()
+    if (!batch.length) break
+    allActivities = allActivities.concat(batch)
+    if (batch.length < 100) break // last page
+    page++
+    await new Promise(r => setTimeout(r, 500)) // rate limit buffer
   }
 
-  const activities = await res.json()
-
-  if (!activities.length) {
+  if (!allActivities.length) {
     console.log(`[Strava] No activities found for ${profile.full_name}`)
     return 0
   }
 
-  const rows = activities.map(act => ({
+  const rows = allActivities.map(act => ({
     id: act.id,
     athlete_id: profile.id,
     name: act.name,

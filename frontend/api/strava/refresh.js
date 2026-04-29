@@ -69,14 +69,22 @@ export default async function handler(req, res) {
     if (!token) return res.status(400).json({ error: 'Could not refresh Strava token' })
 
     const after = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000)
-    const actRes = await fetch(`${STRAVA_API}/athlete/activities?after=${after}&per_page=100`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
+    let page = 1
+    let allActivities = []
+    while (true) {
+      const actRes = await fetch(`${STRAVA_API}/athlete/activities?after=${after}&per_page=100&page=${page}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (!actRes.ok) return res.status(500).json({ error: `Strava API error: ${actRes.status}` })
+      const batch = await actRes.json()
+      if (!batch.length) break
+      allActivities = allActivities.concat(batch)
+      if (batch.length < 100) break
+      page++
+      await new Promise(r => setTimeout(r, 500))
+    }
 
-    if (!actRes.ok) return res.status(500).json({ error: `Strava API error: ${actRes.status}` })
-
-    const activities = await actRes.json()
-    const rows = activities.map(act => ({
+    const rows = allActivities.map(act => ({
       id: act.id,
       athlete_id: userId,
       name: act.name,
