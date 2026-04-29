@@ -87,7 +87,7 @@ export default function Messaging({ session, profile, onReadChannel }) {
 
   async function loadChannels() {
     const [channelsRes, readsRes, mentionsRes] = await Promise.all([
-      supabase.from('channels').select('*, races(name)').order('type').order('name'),
+      supabase.from('channels').select('*, races(name)').order('category').order('sort_order').order('name'),
       supabase.from('channel_reads').select('*').eq('athlete_id', userId),
       supabase.from('message_mentions').select('*', { count: 'exact', head: true }).eq('mentioned_user_id', userId).is('seen_at', null),
     ])
@@ -147,9 +147,11 @@ export default function Messaging({ session, profile, onReadChannel }) {
     setMentionCount(0)
   }
 
-  const generalChannels = channels.filter(c => c.type === 'general')
-  const topicChannels = channels.filter(c => c.type === 'topic')
-  const raceChannels = channels.filter(c => c.type === 'race')
+  const generalChannels = channels.filter(c => c.category === 'general')
+  const trainingChannels = channels.filter(c => c.category === 'training')
+  const interestChannels = channels.filter(c => c.category === 'interest')
+  const regionChannels = channels.filter(c => c.category === 'regions')
+  const raceChannels = channels.filter(c => c.category === 'race')
   const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0)
 
   if (loading) return <div style={{ padding: '3rem', textAlign: 'center', fontFamily: 'Barlow Condensed', letterSpacing: 2, color: '#999', textTransform: 'uppercase' }}>Loading...</div>
@@ -177,7 +179,9 @@ export default function Messaging({ session, profile, onReadChannel }) {
             </button>
 
             <ChannelGroup label="General" channels={generalChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} />
-            {topicChannels.length > 0 && <ChannelGroup label="Topics" channels={topicChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} />}
+            {trainingChannels.length > 0 && <ChannelGroup label="Training" channels={trainingChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} />}
+            {interestChannels.length > 0 && <ChannelGroup label="Groups" channels={interestChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} />}
+            {regionChannels.length > 0 && <ChannelGroup label="Regions" channels={regionChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} />}
             {raceChannels.length > 0 && <ChannelGroup label="Race Threads" channels={raceChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} />}
 
             {/* Bottom hint when no channel selected on mobile */}
@@ -257,7 +261,7 @@ function ChannelGroup({ label, channels, selected, unread, lastMessages, onSelec
           >
             {/* Channel icon */}
             <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: isSelected ? 'rgba(0,196,180,0.15)' : 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0 }}>
-              {ch.type === 'race' ? '🏁' : '#'}
+              {ch.category === 'race' ? '🏁' : ch.category === 'training' ? '💪' : ch.category === 'regions' ? '📍' : ch.category === 'interest' ? '👥' : '#'}
             </div>
 
             {/* Channel name + preview */}
@@ -755,29 +759,57 @@ function MessageThread({ channel, session, profile, isMobile, onBack, onMarkRead
 function NewChannelModal({ session, onClose, onCreated }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [category, setCategory] = useState('general')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  const categoryOptions = [
+    { value: 'general',  label: 'General',        icon: '#'  },
+    { value: 'training', label: 'Training',        icon: '💪' },
+    { value: 'interest', label: 'Groups',          icon: '👥' },
+    { value: 'regions',  label: 'Regions',         icon: '📍' },
+    { value: 'race',     label: 'Race Thread',     icon: '🏁' },
+  ]
 
   async function create() {
     const n = name.trim().toLowerCase().replace(/\s+/g, '-')
     if (!n) { setError('Please enter a channel name'); return }
     setSaving(true)
-    const { data, error: err } = await supabase.from('channels').insert({ name: n, type: 'topic', description: description.trim() || null, created_by: session.user.id }).select('*, races(name)').single()
+    const type = category === 'general' ? 'general' : category === 'race' ? 'race' : 'topic'
+    const { data, error: err } = await supabase.from('channels')
+      .insert({ name: n, type, category, description: description.trim() || null, created_by: session.user.id })
+      .select('*, races(name)').single()
     if (err) { setError(err.message); setSaving(false); return }
     onCreated(data)
   }
+
+  const inputStyle = { width: '100%', background: '#111', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#fff', padding: '10px 12px', fontSize: '14px', fontFamily: 'Barlow, sans-serif', outline: 'none', boxSizing: 'border-box' }
+  const labelStyle = { display: 'block', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '11px', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#999', marginBottom: '6px' }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.12)', borderTop: '3px solid #00C4B4', borderRadius: '10px', padding: '2rem', width: '100%', maxWidth: '420px' }}>
         <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '20px', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', color: '#00C4B4', marginBottom: '1.5rem' }}>New Channel</div>
+
         <div style={{ marginBottom: '12px' }}>
-          <label style={{ display: 'block', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '11px', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#999', marginBottom: '6px' }}>Channel Name</label>
-          <input style={{ width: '100%', background: '#111', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#fff', padding: '10px 12px', fontSize: '14px', fontFamily: 'Barlow, sans-serif', outline: 'none' }} placeholder="e.g. training-tips" value={name} onChange={e => setName(e.target.value)} />
+          <label style={labelStyle}>Category</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {categoryOptions.map(opt => (
+              <button key={opt.value} onClick={() => setCategory(opt.value)}
+                style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px', borderRadius: '6px', border: '1px solid', borderColor: category === opt.value ? '#00C4B4' : 'rgba(255,255,255,0.12)', background: category === opt.value ? 'rgba(0,196,180,0.12)' : 'transparent', color: category === opt.value ? '#00C4B4' : '#888', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '13px', fontWeight: 600, cursor: 'pointer', letterSpacing: '0.5px' }}>
+                <span>{opt.icon}</span>{opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '12px' }}>
+          <label style={labelStyle}>Channel Name</label>
+          <input style={inputStyle} placeholder="e.g. southeast-region" value={name} onChange={e => setName(e.target.value)} />
         </div>
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '11px', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#999', marginBottom: '6px' }}>Description (optional)</label>
-          <input style={{ width: '100%', background: '#111', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#fff', padding: '10px 12px', fontSize: '14px', fontFamily: 'Barlow, sans-serif', outline: 'none' }} placeholder="What's this channel about?" value={description} onChange={e => setDescription(e.target.value)} />
+          <label style={labelStyle}>Description (optional)</label>
+          <input style={inputStyle} placeholder="What's this channel about?" value={description} onChange={e => setDescription(e.target.value)} />
         </div>
         {error && <div style={{ color: '#FF3D8B', fontSize: '13px', marginBottom: '12px' }}>{error}</div>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>

@@ -14,7 +14,7 @@ A private, invite-only race tracking and team coordination platform for ThatTria
 
 **Team** — Roster of all active team members and their race entries.
 
-**Training** — Team training feed powered by Strava. Activities sync automatically every 2 hours via GitHub Actions and are served instantly from Supabase — no live Strava API calls at page load. Features include a weekly team summary (swim/bike/run totals), weekly leaderboard (score = sessions × 10 + hours × 5), weekly training streaks, peak week callouts, monthly team recap, and per-activity race countdown badges. Athletes can trigger an immediate manual sync with the Refresh button. Responsive two-column layout on desktop, single column on mobile.
+**Training** — Team training feed powered by Strava. Activities sync automatically every hour via GitHub Actions and are served instantly from Supabase — no live Strava API calls at page load. Features include a weekly team summary (swim/bike/run totals), weekly leaderboard (score = sessions × 10 + hours × 5), weekly training streaks, peak week callouts, monthly team recap, and per-activity race countdown badges. Athletes can trigger an immediate manual sync with the Refresh button. Responsive two-column layout on desktop, single column on mobile.
 
 **Messages** — Built-in team messaging to replace WhatsApp. Channels include a General channel, topic channels (admin-created), and race-specific threads auto-created when athletes discuss a race. Supports text, image sharing, emoji reactions, Discord-style replies with quoted context, @mentions with a dedicated Mentions view and unread badge, and message editing. Messages are real-time via Supabase subscriptions with optimistic UI for instant feedback.
 
@@ -41,9 +41,9 @@ Invite-only. Contact your team admin to request access. You'll receive a magic l
 ```
 Frontend (React + Vite)  ←→  Supabase (Auth + PostgreSQL + Storage + Realtime)
         ↕                              ↑
-Vercel Serverless Fns          GitHub Actions (daily cron)
-  /api/race-details              ├── Race scraper (6am UTC)
-  /api/strava/callback           └── Strava sync (every 2 hours)
+Vercel Serverless Fns          GitHub Actions
+  /api/race-details              ├── Race scraper (6am UTC daily)
+  /api/strava/callback           └── Strava sync (every hour)
   /api/strava/refresh
   /api/strava/disconnect
 ```
@@ -57,7 +57,7 @@ Vercel Serverless Fns          GitHub Actions (daily cron)
 | Hosting | Vercel |
 | Race Data | triathlon.org API, PTO Race Calendar (scraped) |
 | Race Details | Vercel Serverless Function (`/api/race-details`) |
-| Training Data | Strava API (synced to Supabase every 2 hours) |
+| Training Data | Strava API (synced to Supabase hourly) |
 | Geocoding | OpenStreetMap Nominatim |
 | Map | OpenStreetMap Embed |
 | Scraper Runtime | GitHub Actions (cron) |
@@ -108,7 +108,8 @@ Vercel Serverless Fns          GitHub Actions (daily cron)
 │   └── schema.sql
 ├── .github/
 │   └── workflows/
-│       └── scrape.yml              # Race scraper (6am UTC) + Strava sync (every 2h)
+│       ├── scrape-races.yml        # Race scraper (6am UTC daily)
+│       └── strava-sync.yml         # Strava sync (every hour)
 ├── .env.example
 ├── FLUTTER_INTEGRATION.md
 └── README.md
@@ -183,7 +184,7 @@ Required environment variables in Vercel dashboard:
 
 ### GitHub Actions
 
-Add these secrets to your repo (Settings → Secrets → Actions):
+Two separate workflow files handle the two scheduled jobs. Add these secrets to your repo (Settings → Secrets → Actions):
 
 | Secret | Description |
 |--------|-------------|
@@ -196,7 +197,7 @@ Add these secrets to your repo (Settings → Secrets → Actions):
 | `WHATSAPP_PHONE_ID` | Meta phone number ID *(disabled)* |
 | `WHATSAPP_CHANNEL_ID` | WhatsApp channel ID *(disabled)* |
 
-The scraper runs at 6am UTC daily. Strava sync runs every 2 hours. Both can be triggered manually via GitHub → Actions → Run workflow.
+The race scraper runs at 6am UTC daily. The Strava sync runs every hour. Both can be triggered manually via GitHub → Actions → Run workflow.
 
 ---
 
@@ -204,7 +205,7 @@ The scraper runs at 6am UTC daily. Strava sync runs every 2 hours. Both can be t
 
 | Table | Description |
 |-------|-------------|
-| `profiles` | Team members — name, email, avatar, role, WhatsApp, Strava tokens |
+| `profiles` | Team members — name, email, avatar, role, WhatsApp, Strava tokens, streak data |
 | `races` | All races — name, type, date, location, coordinates, source, URL |
 | `race_entries` | Which athlete is entered in which race |
 | `channels` | Messaging channels — general, topic, race threads |
@@ -213,7 +214,7 @@ The scraper runs at 6am UTC daily. Strava sync runs every 2 hours. Both can be t
 | `message_mentions` | @mention tracking per message |
 | `channel_reads` | Last-read timestamps per user per channel |
 | `discounts` | Partner discount codes — brand, code, amount, expiry, logo |
-| `strava_activities` | Cached Strava activities — synced every 2h, kept for 90 days |
+| `strava_activities` | Strava activity feed — 14-day rolling window, pruned hourly |
 | `notification_log` | WhatsApp notification log |
 
 ### Key RLS Note
@@ -242,11 +243,36 @@ $$;
 
 ## Strava Integration
 
-Athletes connect Strava via OAuth from the Training page. Tokens are stored on their profile. The sync script (`backend/strava-sync.js`) runs every 2 hours via GitHub Actions, fetching the last 90 days of activities for all connected athletes and upserting to the `strava_activities` table. Activities older than 90 days are pruned automatically.
+Athletes connect Strava via OAuth from the Training page. Tokens are stored on their profile row in `profiles`.
 
-The Training page reads directly from Supabase — no live Strava API calls at page load, making it instant. Athletes can trigger a manual refresh from the Training page header.
+### Sync Strategy
 
-**Strava App Setup:**
+The sync script (`backend/strava-sync.js`) runs every hour via GitHub Actions. It handles two distinct cases per athlete:
+
+**First connect — Bootstrap**
+On first connect, `strava_bootstrap_status` is set to `pending`. The next hourly sync detects this and performs a one-time historical walk-back: activities are fetched in reverse chronological order until a gap in weekly training is found. This computes the athlete's correct streak from their full Strava history without storing it — only the last 14 days of activities are written to `strava_activities`. The streak count is written to `profiles`. Bootstrap status then flips to `complete`.
+
+If Strava rate-limits mid-bootstrap, the status resets to `pending` and retries on the next hourly run. The Training page shows "Calculating streak..." for any athlete whose bootstrap is pending, polling every 30 seconds until it completes.
+
+**Subsequent syncs — Incremental**
+Once bootstrapped, each hourly run fetches only the last 2 days of activities (a 2-day buffer ensures a single missed run never breaks a streak), upserts them to `strava_activities`, prunes activities older than 14 days, and updates the streak counters on `profiles`.
+
+### What Is Stored
+
+| Data | Storage |
+|------|---------|
+| Activity feed | `strava_activities` — 14-day rolling window, pruned each sync |
+| Weekly streak (current) | `profiles.training_streak_current` — integer, updated each sync |
+| Weekly streak (longest) | `profiles.training_streak_longest` — integer, updated each sync |
+| Historical activities | Never stored — fetched during bootstrap, used to compute streak, discarded |
+
+### Streak Calculation
+
+Streaks are measured in **weeks**, matching Strava's own streak display. A week is active if the athlete logged at least one activity. The streak must include the current week or last week to be considered live — otherwise it resets to zero.
+
+The Training page reads `training_streak_current` directly from `profiles` — no client-side streak computation from the feed.
+
+### Strava App Setup
 1. Go to [strava.com/settings/api](https://www.strava.com/settings/api)
 2. Create an app — set Authorization Callback Domain to your Vercel domain
 3. Add Client ID and Client Secret to Vercel and GitHub secrets
