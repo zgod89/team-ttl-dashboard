@@ -196,11 +196,11 @@ export default function Messaging({ session, profile, onReadChannel }) {
               {mentionCount > 0 && <div style={{ background: '#FF3D8B', color: '#fff', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '12px', fontWeight: 700, borderRadius: '10px', padding: '2px 8px', flexShrink: 0 }}>{mentionCount}</div>}
             </button>
 
-            <ChannelGroup label="General" channels={generalChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} />
-            {trainingChannels.length > 0 && <ChannelGroup label="Training" channels={trainingChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} />}
-            {interestChannels.length > 0 && <ChannelGroup label="Groups" channels={interestChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} />}
-            {regionChannels.length > 0 && <ChannelGroup label="Regions" channels={regionChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} />}
-            {raceChannels.length > 0 && <ChannelGroup label="Race Threads" channels={raceChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} />}
+            <ChannelGroup label="General" channels={generalChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} defaultOpen={true} />
+            {trainingChannels.length > 0 && <ChannelGroup label="Training" channels={trainingChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} defaultOpen={false} />}
+            {interestChannels.length > 0 && <ChannelGroup label="Groups" channels={interestChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} defaultOpen={false} />}
+            {regionChannels.length > 0 && <ChannelGroup label="Regions" channels={regionChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} defaultOpen={false} />}
+            {raceChannels.length > 0 && <ChannelGroup label="Race Threads" channels={raceChannels} selected={selectedChannel} unread={unreadCounts} lastMessages={lastMessages} onSelect={openChannel} defaultOpen={false} />}
 
             {/* Bottom hint when no channel selected on mobile */}
             {isMobile && !selectedChannel && !showMentions && (
@@ -265,7 +265,7 @@ const CATEGORY_COLORS = {
 function ChannelIcon({ ch, isSelected, size = 36 }) {
   if (ch.is_readonly) {
     return (
-      <div style={{ width: size, height: size, borderRadius: '8px', background: isSelected ? 'rgba(255,61,139,0.2)' : 'rgba(255,61,139,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: size * 0.5 }}>
+      <div style={{ width: size, height: size, borderRadius: '8px', background: isSelected ? 'rgba(255,61,139,0.25)' : 'rgba(255,61,139,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: size * 0.5 }}>
         📢
       </div>
     )
@@ -275,11 +275,11 @@ function ChannelIcon({ ch, isSelected, size = 36 }) {
   return (
     <div style={{
       width: size, height: size, borderRadius: '8px', flexShrink: 0,
-      background: isSelected ? `${color}22` : 'rgba(255,255,255,0.05)',
-      border: isSelected ? `1px solid ${color}44` : '1px solid transparent',
+      background: isSelected ? `${color}30` : `${color}18`,
+      border: `1px solid ${isSelected ? color + '60' : color + '28'}`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 800,
-      fontSize: size * 0.44, color: isSelected ? color : '#555',
+      fontSize: size * 0.44, color: isSelected ? color : `${color}cc`,
       transition: 'all 0.15s',
     }}>
       {letter}
