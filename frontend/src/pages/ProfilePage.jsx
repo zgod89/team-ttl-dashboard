@@ -73,6 +73,17 @@ const S = {
   badge: { fontFamily: 'Barlow Condensed, sans-serif', fontSize: '10px', fontWeight: 700, letterSpacing: '1px', padding: '2px 8px', borderRadius: '3px', textTransform: 'uppercase', display: 'inline-block', marginTop: '4px' },
   monthLabel: { fontFamily: 'Barlow Condensed, sans-serif', fontSize: '12px', letterSpacing: '2px', textTransform: 'uppercase', color: '#444', marginBottom: '8px', marginTop: '1rem', paddingBottom: '6px', borderBottom: '1px solid rgba(255,255,255,0.05)' },
   emptyRaces: { textAlign: 'center', padding: '2rem', background: '#161616', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px' },
+  // Badges
+  badgeGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px' },
+  badgeTile: { background: '#161616', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '14px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', textAlign: 'center' },
+  badgeTileEarned: { background: 'rgba(232,184,75,0.05)', border: '1px solid rgba(232,184,75,0.2)' },
+  badgeTileLocked: { opacity: 0.35, filter: 'grayscale(1)' },
+  badgeIcon: { fontSize: '28px', lineHeight: 1 },
+  badgeName: { fontFamily: 'Barlow Condensed, sans-serif', fontSize: '13px', fontWeight: 700, color: '#fff', lineHeight: 1.2 },
+  badgeDesc: { fontSize: '11px', color: '#666', lineHeight: 1.4 },
+  badgeDate: { fontSize: '10px', color: '#E8B84B', fontFamily: 'Barlow Condensed, sans-serif', letterSpacing: '0.5px' },
+  badgeTierLabel: { fontFamily: 'Barlow Condensed, sans-serif', fontSize: '9px', letterSpacing: '1.5px', textTransform: 'uppercase', padding: '2px 6px', borderRadius: '3px' },
+  badgeTierElite: { background: 'rgba(232,184,75,0.1)', color: '#E8B84B', border: '1px solid rgba(232,184,75,0.2)' },
 }
 
 export default function ProfilePage({ session, profile: initialProfile, onSave }) {
@@ -87,11 +98,14 @@ export default function ProfilePage({ session, profile: initialProfile, onSave }
   const [error, setError] = useState('')
   const [myRaces, setMyRaces] = useState([])
   const [loadingRaces, setLoadingRaces] = useState(true)
+  const [earnedBadges, setEarnedBadges] = useState([])
+  const [allBadges, setAllBadges] = useState([])
+  const [loadingBadges, setLoadingBadges] = useState(true)
   const fileRef = useRef()
   const userId = session.user.id
   const email = session.user.email
 
-  useEffect(() => { loadMyRaces() }, [])
+  useEffect(() => { loadMyRaces(); loadBadges() }, [])
 
   async function loadMyRaces() {
     const { data } = await supabase.from('race_entries').select('*, races(*)').eq('athlete_id', userId)
@@ -102,6 +116,23 @@ export default function ProfilePage({ session, profile: initialProfile, onSave }
       setMyRaces(upcoming)
     }
     setLoadingRaces(false)
+  }
+
+  async function loadBadges() {
+    const [earnedRes, allRes] = await Promise.all([
+      supabase
+        .from('profile_badges')
+        .select('badge_key, earned_at, badges(name, icon, tier, description, sort_order)')
+        .eq('athlete_id', userId)
+        .order('earned_at', { ascending: false }),
+      supabase
+        .from('badges')
+        .select('key, name, icon, tier, description, sort_order')
+        .order('sort_order'),
+    ])
+    if (earnedRes.data) setEarnedBadges(earnedRes.data)
+    if (allRes.data)    setAllBadges(allRes.data)
+    setLoadingBadges(false)
   }
 
   async function handleAvatarUpload(e) {
@@ -207,6 +238,78 @@ export default function ProfilePage({ session, profile: initialProfile, onSave }
 
       <button style={S.saveBtn} onClick={handleSave} disabled={saving || uploading}>{saving ? 'Saving...' : 'Save Profile'}</button>
       <button style={S.signOutBtn} onClick={signOut}>Sign Out</button>
+
+      <div style={S.divider} />
+
+      {/* Badges */}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+        <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '32px', fontWeight: 800, letterSpacing: '2px', textTransform: 'uppercase', color: '#fff' }}>Badges</div>
+        {!loadingBadges && (
+          <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '12px', letterSpacing: '1px', color: '#555' }}>
+            {earnedBadges.length} / {allBadges.length} earned
+          </div>
+        )}
+      </div>
+
+      {loadingBadges ? (
+        <div style={{ color: '#555', fontSize: '13px' }}>Loading...</div>
+      ) : (
+        <>
+          {/* Standard badges */}
+          {(() => {
+            const earnedKeys = new Set(earnedBadges.map(b => b.badge_key))
+            const standard = allBadges.filter(b => b.tier === 'standard')
+            const elite    = allBadges.filter(b => b.tier === 'elite')
+
+            return (
+              <>
+                {/* Standard */}
+                <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '11px', letterSpacing: '2px', textTransform: 'uppercase', color: '#555', marginBottom: '10px' }}>Standard</div>
+                <div style={{ ...S.badgeGrid, marginBottom: '1.5rem' }}>
+                  {standard.map(b => {
+                    const earned = earnedBadges.find(e => e.badge_key === b.key)
+                    return (
+                      <div key={b.key} style={{ ...S.badgeTile, ...(earned ? S.badgeTileEarned : S.badgeTileLocked) }}>
+                        <div style={S.badgeIcon}>{b.icon}</div>
+                        <div style={S.badgeName}>{b.name}</div>
+                        <div style={S.badgeDesc}>{b.description}</div>
+                        {earned && (
+                          <div style={S.badgeDate}>
+                            {new Date(earned.earned_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Elite */}
+                <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '11px', letterSpacing: '2px', textTransform: 'uppercase', color: '#555', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Elite
+                  <span style={{ ...S.badgeTierLabel, ...S.badgeTierElite }}>Hard to earn</span>
+                </div>
+                <div style={S.badgeGrid}>
+                  {elite.map(b => {
+                    const earned = earnedBadges.find(e => e.badge_key === b.key)
+                    return (
+                      <div key={b.key} style={{ ...S.badgeTile, ...(earned ? S.badgeTileEarned : S.badgeTileLocked) }}>
+                        <div style={S.badgeIcon}>{b.icon}</div>
+                        <div style={S.badgeName}>{b.name}</div>
+                        <div style={S.badgeDesc}>{b.description}</div>
+                        {earned && (
+                          <div style={S.badgeDate}>
+                            {new Date(earned.earned_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )
+          })()}
+        </>
+      )}
 
       <div style={S.divider} />
 

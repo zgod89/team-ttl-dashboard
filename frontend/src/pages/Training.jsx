@@ -1,6 +1,8 @@
 import { useState, useEffect, Component } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import ChallengeCard from '../components/ChallengeCard'
+import ChallengeAdminModal from '../components/ChallengeAdminModal'
 
 const STRAVA_ORANGE = '#FC4C02'
 
@@ -264,6 +266,60 @@ function MonthlySummary({ activities }) {
   )
 }
 
+// ── Activity badge strip ──────────────────────────────────────────
+// Badges that can be attributed to a specific activity (shown on the card).
+// These are computed client-side from the activity's own fields — the sync
+// has already written them to profile_badges, this is just a visual hint.
+const ACTIVITY_BADGE_CHECKS = [
+  { key: 'century',       check: a => normaliseSportClient(a.sport_type) === 'ride' && (a.distance || 0) / 1000 >= 160 },
+  { key: 'marathon_legs', check: a => normaliseSportClient(a.sport_type) === 'run'  && (a.distance || 0) / 1000 >= 42.2 },
+  { key: 'iron_swim',     check: a => normaliseSportClient(a.sport_type) === 'swim' && (a.distance || 0) / 1000 >= 3.8 },
+  { key: 'suffer_200',    check: a => (a.suffer_score || 0) >= 200 },
+]
+
+const ACTIVITY_BADGE_LABELS = {
+  century:       { icon: '💯', label: 'The Century' },
+  marathon_legs: { icon: '🦵', label: 'Marathon Legs' },
+  iron_swim:     { icon: '🌊', label: 'Iron Swimmer' },
+  suffer_200:    { icon: '😤', label: 'Pain Cave' },
+}
+
+function normaliseSportClient(sportType) {
+  const s = (sportType || '').toLowerCase()
+  if (s.includes('swim'))                                                     return 'swim'
+  if (s.includes('ride') || s.includes('cycling') || s.includes('virtual'))  return 'ride'
+  if (s.includes('run'))                                                      return 'run'
+  return s
+}
+
+function ActivityBadgeStrip({ activity }) {
+  const triggered = ACTIVITY_BADGE_CHECKS.filter(b => b.check(activity))
+  if (!triggered.length) return null
+  return (
+    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+      {triggered.map(b => {
+        const meta = ACTIVITY_BADGE_LABELS[b.key]
+        return (
+          <span
+            key={b.key}
+            title={meta.label}
+            style={{
+              fontSize: 11, padding: '2px 7px', borderRadius: 3,
+              background: 'rgba(232,184,75,0.1)',
+              border: '1px solid rgba(232,184,75,0.25)',
+              color: '#E8B84B',
+              fontFamily: 'Barlow Condensed, sans-serif',
+              letterSpacing: '0.5px',
+            }}
+          >
+            {meta.icon} {meta.label}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Activity card ─────────────────────────────────────────────────
 function ActivityCard({ activity, upcomingRaces }) {
   const cfg     = getType(activity.sport_type)
@@ -306,6 +362,7 @@ function ActivityCard({ activity, upcomingRaces }) {
           {activity.kudos_count          > 0 && <span style={{ fontSize: 12, color: '#555' }}>👍 {activity.kudos_count}</span>}
           {activity.trainer                  && <span style={{ fontSize: 11, color: '#444', background: 'rgba(255,255,255,0.04)', borderRadius: 3, padding: '1px 5px' }}>indoor</span>}
         </div>
+        <ActivityBadgeStrip activity={activity} />
       </div>
     </a>
   )
@@ -331,13 +388,15 @@ function ConnectBanner({ userId }) {
 
 // ── Main ──────────────────────────────────────────────────────────
 function TrainingPage({ session, profile }) {
-  const [activities, setActivities]     = useState([])
-  const [profiles, setProfiles]         = useState({})   // map of id → profile
-  const [upcomingRaces, setUpcomingRaces] = useState([])
-  const [syncing, setSyncing]           = useState(false)
-  const [lastSync, setLastSync]         = useState(null)
-  const [loading, setLoading]           = useState(true)
-  const [searchParams]                  = useSearchParams()
+  const [activities, setActivities]         = useState([])
+  const [profiles, setProfiles]             = useState({})   // map of id → profile
+  const [upcomingRaces, setUpcomingRaces]   = useState([])
+  const [challenge, setChallenge]           = useState(null)
+  const [showChallengeModal, setShowChallengeModal] = useState(false)
+  const [syncing, setSyncing]               = useState(false)
+  const [lastSync, setLastSync]             = useState(null)
+  const [loading, setLoading]               = useState(true)
+  const [searchParams]                      = useSearchParams()
 
   const userId      = session?.user?.id
   const isConnected = !!profile?.strava_athlete_id
@@ -354,7 +413,7 @@ function TrainingPage({ session, profile }) {
 
   async function loadAll() {
     setLoading(true)
-    await Promise.all([loadActivities(), loadProfiles(), loadRaces()])
+    await Promise.all([loadActivities(), loadProfiles(), loadRaces(), loadChallenge()])
     setLoading(false)
   }
 
@@ -402,6 +461,15 @@ function TrainingPage({ session, profile }) {
         .map(e => ({ athlete_id: e.athlete_id, ...e.races }))
         .sort((a, b) => new Date(a.race_date) - new Date(b.race_date))
     )
+  }
+
+  async function loadChallenge() {
+    const { data } = await supabase
+      .from('challenges')
+      .select('*')
+      .eq('is_active', true)
+      .single()
+    setChallenge(data || null)
   }
 
   async function handleRefresh() {
@@ -500,6 +568,12 @@ function TrainingPage({ session, profile }) {
           <MonthlySummary activities={enriched} />
           <WeeklySummary activities={enriched} />
 
+          <ChallengeCard
+            challenge={challenge}
+            isAdmin={profile?.role === 'admin'}
+            onManage={() => setShowChallengeModal(true)}
+          />
+
           <div className="train-grid">
             {/* Feed */}
             <div style={{ minWidth: 0 }}>
@@ -535,6 +609,15 @@ function TrainingPage({ session, profile }) {
             </div>
           </div>
         </>
+      )}
+
+      {showChallengeModal && profile?.role === 'admin' && (
+        <ChallengeAdminModal
+          challenge={challenge}
+          userId={userId}
+          onSave={() => { setShowChallengeModal(false); loadChallenge() }}
+          onClose={() => setShowChallengeModal(false)}
+        />
       )}
     </div>
   )
