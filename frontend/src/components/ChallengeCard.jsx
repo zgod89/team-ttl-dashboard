@@ -42,9 +42,9 @@ function weekLabel(weekStart) {
 }
 
 // ── Combined distance progress ────────────────────────────────────
-function CombinedDistance({ progress }) {
+function CombinedDistance({ progress, challenge }) {
   const current = progress.current_km || 0
-  const target  = progress.target_km  || 1
+  const target  = progress.target_km  || Number(challenge?.target_value) || 1
   const sport   = progress.sport_type || ''
   const pct     = Math.min(100, Math.round((current / target) * 100))
   const done    = pct >= 100
@@ -243,7 +243,7 @@ export default function ChallengeCard({ challenge, isAdmin, onManage }) {
       </div>
 
       {/* Progress */}
-      {isCombined && <CombinedDistance progress={progress} />}
+      {isCombined && <CombinedDistance progress={progress} challenge={challenge} />}
       {isEveryone  && <EveryoneLogs    progress={progress} />}
     </div>
   )

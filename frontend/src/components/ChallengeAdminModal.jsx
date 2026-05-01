@@ -111,12 +111,6 @@ export default function ChallengeAdminModal({ challenge, userId, onSave, onClose
         .update(payload)
         .eq('id', challenge.id))
     } else {
-      // Deactivate any current active challenge first, then insert
-      await supabase
-        .from('challenges')
-        .update({ is_active: false })
-        .eq('is_active', true)
-
       ;({ error: err } = await supabase
         .from('challenges')
         .insert(payload))
@@ -157,7 +151,7 @@ export default function ChallengeAdminModal({ challenge, userId, onSave, onClose
           {challenge ? 'Edit Challenge' : 'New Challenge'}
         </div>
         <div style={{ fontSize: '13px', color: '#555', marginBottom: '1.5rem' }}>
-          Only one active challenge at a time. Creating a new one deactivates the current one.
+          Multiple challenges can run simultaneously — useful when the team has different sport preferences.
         </div>
 
         {/* Title field */}

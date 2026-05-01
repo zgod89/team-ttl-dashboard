@@ -401,7 +401,7 @@ function TrainingPage({ session, profile }) {
   const [activities, setActivities]         = useState([])
   const [profiles, setProfiles]             = useState({})   // map of id → profile
   const [upcomingRaces, setUpcomingRaces]   = useState([])
-  const [challenge, setChallenge]           = useState(null)
+  const [challenges, setChallenges]         = useState([])
   const [showChallengeModal, setShowChallengeModal] = useState(false)
   const [syncing, setSyncing]               = useState(false)
   const [lastSync, setLastSync]             = useState(null)
@@ -482,8 +482,8 @@ function TrainingPage({ session, profile }) {
       .from('challenges')
       .select('*')
       .eq('is_active', true)
-      .single()
-    setChallenge(data || null)
+      .order('created_at', { ascending: true })
+    setChallenges(data || [])
   }
 
   async function handleRefresh() {
@@ -582,20 +582,21 @@ function TrainingPage({ session, profile }) {
           <MonthlySummary activities={enriched} />
           <WeeklySummary activities={enriched} />
 
-          {challenge ? (
+          {challenges.map(ch => (
             <ChallengeCard
-              challenge={challenge}
+              key={ch.id}
+              challenge={ch}
               isAdmin={profile?.role === 'admin'}
               onManage={() => setShowChallengeModal(true)}
             />
-          ) : profile?.role === 'admin' && (
-            <div style={{ border: '1px dashed rgba(232,184,75,0.25)', borderRadius: 10, padding: '0.875rem 1.25rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 13, color: '#555' }}>No active challenge this week</div>
+          ))}
+          {profile?.role === 'admin' && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: challenges.length ? 0 : '1.25rem' }}>
               <button
                 onClick={() => setShowChallengeModal(true)}
-                style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 12, letterSpacing: '1px', textTransform: 'uppercase', padding: '6px 14px', background: 'rgba(232,184,75,0.1)', border: '1px solid rgba(232,184,75,0.3)', borderRadius: 4, color: '#E8B84B', cursor: 'pointer', flexShrink: 0 }}
+                style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 11, letterSpacing: '1px', textTransform: 'uppercase', padding: '5px 12px', background: 'rgba(232,184,75,0.08)', border: '1px solid rgba(232,184,75,0.25)', borderRadius: 4, color: '#E8B84B', cursor: 'pointer' }}
               >
-                + Set a challenge
+                + Add challenge
               </button>
             </div>
           )}
@@ -639,7 +640,7 @@ function TrainingPage({ session, profile }) {
 
       {showChallengeModal && profile?.role === 'admin' && (
         <ChallengeAdminModal
-          challenge={challenge}
+          challenge={null}
           userId={userId}
           onSave={() => { setShowChallengeModal(false); loadChallenge() }}
           onClose={() => setShowChallengeModal(false)}
