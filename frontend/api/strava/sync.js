@@ -50,11 +50,14 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
+  // Optional: single-athlete mode — used by /api/strava/refresh for the Refresh button
+  const singleUserId = req.body?.userId || null
+
   const started = Date.now()
   const results = { synced: 0, skipped: 0, errors: [] }
 
   try {
-    const { data: athletes, error: profilesErr } = await supabase
+    let query = supabase
       .from('profiles')
       .select(`
         id, full_name,
@@ -65,8 +68,12 @@ export default async function handler(req, res) {
       `)
       .not('strava_athlete_id', 'is', null)
       .not('strava_refresh_token', 'is', null)
-      // Skip athletes currently mid-bootstrap to avoid concurrent double-processing
       .neq('strava_bootstrap_status', 'in_progress')
+
+    // Filter to a single athlete when called from the Refresh button
+    if (singleUserId) query = query.eq('id', singleUserId)
+
+    const { data: athletes, error: profilesErr } = await query
 
     if (profilesErr) throw new Error(`Failed to fetch profiles: ${profilesErr.message}`)
     if (!athletes?.length) return res.status(200).json({ message: 'No athletes connected', ...results })
