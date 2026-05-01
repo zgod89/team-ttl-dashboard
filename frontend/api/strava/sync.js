@@ -263,7 +263,7 @@ async function checkAndAwardBadges(profile, recentActivities) {
     }
 
     const label = BADGE_LABELS[badgeKey] || badgeKey
-    await postToTrainingChannel(profile.id, `🎖️ ${profile.full_name} just earned **${label}**!`)
+    await postToTrainingChannel(profile.id, `🎖️ ${profile.full_name} just earned ${label}!`)
     console.log(`[badges] Awarded ${badgeKey} to ${profile.full_name}`)
   }
 }
@@ -497,25 +497,23 @@ async function updateChallengeProgress() {
 
   await supabase.from('challenges')
     .update({
-      challenge_progress:              progress,
-      challenge_completed_celebrated:  justCompleted ? true : challenge.challenge_completed_celebrated,
-      updated_at:                      new Date().toISOString(),
+      challenge_progress:             progress,
+      challenge_completed_celebrated: justCompleted ? true : challenge.challenge_completed_celebrated,
+      updated_at:                     new Date().toISOString(),
     })
     .eq('id', challenge.id)
 
   if (justCompleted) {
-    // Use a system-style post — attribute to the first admin we can find
     const { data: admin } = await supabase
       .from('profiles')
       .select('id')
       .eq('role', 'admin')
       .limit(1)
       .single()
-
     if (admin) {
       await postToTrainingChannel(
         admin.id,
-        `🎉 The team just completed the **${challenge.title}** challenge!`
+        `🎉 The team just completed the ${challenge.title} challenge!`
       )
     }
     console.log(`[challenge] Completion announced for "${challenge.title}"`)
@@ -674,9 +672,7 @@ async function getTrainingChannelId() {
   const { data } = await supabase
     .from('channels')
     .select('id')
-    .eq('category', 'training')
-    .order('sort_order', { ascending: true })
-    .limit(1)
+    .eq('name', 'shout-outs')
     .single()
   _trainingChannelId = data?.id || null
   return _trainingChannelId
