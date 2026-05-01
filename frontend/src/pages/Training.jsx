@@ -590,20 +590,19 @@ function TrainingPage({ session, profile }) {
               onManage={() => setShowChallengeModal(true)}
             />
           ))}
-          {profile?.role === 'admin' && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: challenges.length ? 0 : '1.25rem' }}>
-              <button
-                onClick={() => setShowChallengeModal(true)}
-                style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 11, letterSpacing: '1px', textTransform: 'uppercase', padding: '5px 12px', background: 'rgba(232,184,75,0.08)', border: '1px solid rgba(232,184,75,0.25)', borderRadius: 4, color: '#E8B84B', cursor: 'pointer' }}
-              >
-                + Add challenge
-              </button>
-            </div>
-          )}
-
           <div className="train-grid">
             {/* Feed */}
             <div style={{ minWidth: 0 }}>
+              {profile?.role === 'admin' && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
+                  <button
+                    onClick={() => setShowChallengeModal(true)}
+                    style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 11, letterSpacing: '1px', textTransform: 'uppercase', padding: '5px 12px', background: 'rgba(232,184,75,0.08)', border: '1px solid rgba(232,184,75,0.25)', borderRadius: 4, color: '#E8B84B', cursor: 'pointer' }}
+                  >
+                    + Add challenge
+                  </button>
+                </div>
+              )}
               {enriched.length === 0 ? (
                 <div style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '3rem 2rem', textAlign: 'center' }}>
                   <div style={{ fontSize: 40, marginBottom: 12 }}>🏊🚴🏃</div>
