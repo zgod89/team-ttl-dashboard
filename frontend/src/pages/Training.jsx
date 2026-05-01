@@ -428,7 +428,11 @@ function TrainingPage({ session, profile }) {
   }
 
   async function loadActivities() {
-    const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+    // Match sync.js retention: back to 1st of previous month
+    const now = new Date()
+    const cutoffYear  = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+    const cutoffMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1
+    const cutoff = new Date(Date.UTC(cutoffYear, cutoffMonth, 1)).toISOString()
     const { data } = await supabase
       .from('strava_activities')
       .select('id, athlete_id, name, sport_type, start_date, start_date_local, distance, moving_time, elapsed_time, total_elevation_gain, average_heartrate, max_heartrate, map_summary_polyline, kudos_count, achievement_count, average_speed, max_speed, average_cadence, average_watts, max_watts, weighted_average_watts, kilojoules, suffer_score, pr_count, trainer, commute, synced_at, created_at')
