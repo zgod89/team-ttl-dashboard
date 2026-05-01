@@ -111,6 +111,12 @@ export default function CompleteProfile({ session, onComplete }) {
     // Also update user metadata so it's available session-wide
     await supabase.auth.updateUser({ data: { full_name: name } })
 
+    // Award the welcome badge — ignore errors (badge may already exist or not yet seeded)
+    await supabase.from('profile_badges').insert({
+      athlete_id: userId,
+      badge_key:  'welcome_team',
+    })
+
     onComplete()
   }
 
