@@ -852,9 +852,9 @@ function currentWeekVolume(activities) {
 // Collapse Strava's many sport_type strings to swim / ride / run
 function normaliseSport(sportType) {
   const s = (sportType || '').toLowerCase()
-  if (s.includes('swim'))                                                  return 'swim'
-  if (s.includes('ride') || s.includes('cycling') || s.includes('virtual')) return 'ride'
-  if (s.includes('run'))                                                   return 'run'
+  if (s.includes('swim'))                              return 'swim'
+  if (s.includes('run'))                               return 'run'
+  if (s.includes('ride') || s.includes('cycling') || s === 'virtualride') return 'ride'
   return s
 }
 

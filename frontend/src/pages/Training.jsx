@@ -296,9 +296,9 @@ const ACTIVITY_BADGE_LABELS = {
 
 function normaliseSportClient(sportType) {
   const s = (sportType || '').toLowerCase()
-  if (s.includes('swim'))                                                     return 'swim'
-  if (s.includes('ride') || s.includes('cycling') || s.includes('virtual'))  return 'ride'
-  if (s.includes('run'))                                                      return 'run'
+  if (s.includes('swim'))                              return 'swim'
+  if (s.includes('run'))                               return 'run'
+  if (s.includes('ride') || s.includes('cycling') || s === 'virtualride') return 'ride'
   return s
 }
 
